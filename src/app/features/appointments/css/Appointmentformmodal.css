@@ -1,0 +1,128 @@
+.appt-modal {
+  width: min(480px, calc(100vw - 32px));
+  padding: 0;
+  color: #10302d;
+  background: #ffffff;
+  border: 1px solid #dbe5e3;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(16, 48, 45, 0.25);
+}
+
+.appt-modal::backdrop {
+  background: rgba(16, 48, 45, 0.45);
+}
+
+.appt-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+}
+
+.appt-modal__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.appt-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 10px;
+}
+
+.appt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b6663;
+}
+
+.appt-field input,
+.appt-field select,
+.appt-field textarea {
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 400;
+  color: #10302d;
+  background: #ffffff;
+  border: 1px solid #c3d3d0;
+  border-radius: 8px;
+}
+
+.appt-field input:focus-visible,
+.appt-field select:focus-visible,
+.appt-field textarea:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
+  border-color: #0f766e;
+}
+
+.appt-field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.appt-modal__error {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #8a1c1c;
+  background: #fde4e4;
+  border-radius: 8px;
+}
+
+.appt-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.appt-btn {
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: #10302d;
+  background: #ffffff;
+  border: 1px solid #c3d3d0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.appt-btn:hover:not(:disabled) {
+  background: #f4f8f7;
+}
+
+.appt-btn--primary {
+  color: #ffffff;
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.appt-btn--primary:hover:not(:disabled) {
+  background: #0b5f58;
+}
+
+.appt-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.appt-btn:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .appt-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .appt-row > :first-child {
+    grid-column: 1 / -1;
+  }
+}

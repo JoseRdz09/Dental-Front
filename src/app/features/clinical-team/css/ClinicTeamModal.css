@@ -1,0 +1,170 @@
+
+.clinic-team-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 55%);
+  backdrop-filter: blur(3px);
+}
+
+.clinic-team-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 26px;
+  border-radius: 16px;
+  background: #fff;
+  color: #1e293b;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 20%);
+}
+
+.clinic-team-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.clinic-team-modal__header h2 {
+  margin: 0 0 6px;
+  font-size: 21px;
+}
+
+.clinic-team-modal__header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.clinic-team-modal button {
+  cursor: pointer;
+}
+
+.clinic-team-modal form,
+.clinic-team-modal form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clinic-team-modal form {
+  gap: 18px;
+}
+
+.clinic-team-modal form label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clinic-team-modal input:not([type="checkbox"]),
+.clinic-team-modal select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+}
+
+.clinic-team-modal__checkbox {
+  flex-direction: row !important;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.clinic-team-modal__checkbox input {
+  margin-top: 3px;
+}
+
+.clinic-team-modal__checkbox small {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.clinic-team-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.clinic-team-modal__actions button,
+.clinic-team-modal__success > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+}
+
+.clinic-team-modal__actions button[type="submit"] {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.clinic-team-modal button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.clinic-team-modal__error {
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.clinic-team-modal__success {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.clinic-team-modal__password {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+}
+
+.clinic-team-modal__password input {
+  flex: 1;
+  min-width: 0;
+}
+
+.clinic-team-modal__password button {
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 480px) {
+  .clinic-team-modal {
+    padding: 20px;
+  }
+
+  .clinic-team-modal__actions {
+    flex-direction: column-reverse;
+  }
+
+  .clinic-team-modal__actions button {
+    width: 100%;
+  }
+}

@@ -1,0 +1,244 @@
+.clinic-team-create-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 55%);
+}
+
+.clinic-team-create-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 20%);
+}
+
+.clinic-team-create-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.clinic-team-create-modal__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.clinic-team-create-modal__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 12px;
+}
+
+.clinic-team-create-modal__header h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.clinic-team-create-modal__header p {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.clinic-team-create-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.clinic-team-create-modal__close:hover {
+  color: #111827;
+  background: #f3f4f6;
+}
+
+.clinic-team-create-modal__form,
+.clinic-team-create-modal__result {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+.clinic-team-create-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clinic-team-create-modal__field label,
+.clinic-team-create-modal__result label {
+  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clinic-team-create-modal__field input,
+.clinic-team-create-modal__field select,
+.clinic-team-create-modal__result input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font: inherit;
+  outline: none;
+}
+
+.clinic-team-create-modal__field input:focus,
+.clinic-team-create-modal__field select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.clinic-team-create-modal__field input:disabled,
+.clinic-team-create-modal__field select:disabled {
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
+.clinic-team-create-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.clinic-team-create-modal__cancel,
+.clinic-team-create-modal__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clinic-team-create-modal__cancel {
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+}
+
+.clinic-team-create-modal__cancel:hover {
+  background: #f9fafb;
+}
+
+.clinic-team-create-modal__submit {
+  color: #fff;
+  background: #2563eb;
+  border: 1px solid #2563eb;
+}
+
+.clinic-team-create-modal__submit:hover {
+  background: #1d4ed8;
+}
+
+.clinic-team-create-modal__cancel:disabled,
+.clinic-team-create-modal__submit:disabled,
+.clinic-team-create-modal__close:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clinic-team-create-modal__error,
+.clinic-team-create-modal__success {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.clinic-team-create-modal__error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.clinic-team-create-modal__success {
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.clinic-team-create-modal__result h3 {
+  margin: 0;
+  color: #166534;
+  font-size: 18px;
+}
+
+.clinic-team-create-modal__result p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.clinic-team-create-modal__result input {
+  font-family: monospace;
+}
+
+.clinic-team-create-modal__spinner {
+  animation: clinic-team-create-spin 1s linear infinite;
+}
+
+@keyframes clinic-team-create-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .clinic-team-create-modal__overlay {
+    padding: 12px;
+  }
+
+  .clinic-team-create-modal__header,
+  .clinic-team-create-modal__form,
+  .clinic-team-create-modal__result {
+    padding: 18px;
+  }
+
+  .clinic-team-create-modal__footer {
+    flex-direction: column-reverse;
+  }
+
+  .clinic-team-create-modal__cancel,
+  .clinic-team-create-modal__submit {
+    width: 100%;
+  }
+}
