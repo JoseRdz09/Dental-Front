@@ -1,0 +1,318 @@
+
+/* =========================
+   CONTENEDOR PRINCIPAL
+========================= */
+
+.clinics-organizations {
+  width: 100%;
+  min-width: 0;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.clinics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.clinics-header h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.clinics-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 16px;
+}
+
+/* =========================
+   LISTADO DE CLÍNICAS
+========================= */
+
+.clinics-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, 420px), 1fr)
+  );
+  align-items: stretch;
+  gap: 28px;
+}
+
+/* =========================
+   TARJETA DE CLÍNICA
+========================= */
+
+.clinic-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 26px;
+  min-width: 0;
+  min-height: 380px;
+  padding: 30px;
+  box-sizing: border-box;
+  color: #1e293b;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+    background-color: 0.2s ease;
+}
+
+.clinic-card:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 6px 18px rgb(15 23 42 / 9%);
+}
+
+.clinic-card.selected {
+  border: 2px solid #2563eb;
+  padding: 29px;
+  background: #f8fbff;
+  box-shadow: 0 6px 18px rgb(37 99 235 / 12%);
+}
+
+/* =========================
+   ENCABEZADO DE LA TARJETA
+========================= */
+
+.clinic-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.clinic-card-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 12px;
+}
+
+.clinic-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.clinic-card-title h3 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.clinic-card-title > span {
+  color: #64748b;
+  font-size: 15px;
+}
+
+/* =========================
+   ESTADO DE LA CLÍNICA
+========================= */
+
+.clinic-status {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.clinic-status-active {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.clinic-status-inactive {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+/* =========================
+   DATOS DE LA CLÍNICA
+========================= */
+
+.clinic-card-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 20px;
+  min-width: 0;
+}
+
+.clinic-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.clinic-detail-label {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.clinic-detail-value {
+  max-width: 100%;
+  color: #1e293b;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* =========================
+   BOTONES DE ACCIÓN
+========================= */
+
+.clinic-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.clinic-edit-button {
+  display: inline-flex;
+  flex: 1 1 120px;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.clinic-card-select-button {
+  color: #ffffff;
+  background: #2563eb;
+}
+
+.clinic-card-select-button:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.clinic-card-select-button[aria-pressed="true"] {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.clinic-card-select-button[aria-pressed="true"]:hover {
+  background: #bfdbfe;
+}
+
+.clinic-edit-button {
+  color: #2563eb;
+  background: #ffffff;
+}
+
+.clinic-edit-button:hover {
+  background: #eff6ff;
+}
+
+/* Accesibilidad: foco visible al navegar con teclado */
+
+.clinic-card-select-button:focus-visible,
+.clinic-edit-button:focus-visible {
+  outline: 3px solid rgb(59 130 246 / 35%);
+  outline-offset: 3px;
+}
+
+/* =========================
+   MENSAJES
+========================= */
+
+.clinics-error {
+  padding: 12px 16px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
+/* =========================
+   DISEÑO RESPONSIVO
+========================= */
+
+@media (max-width: 600px) {
+  .clinics-organizations {
+    padding: 16px;
+  }
+
+  .clinics-header {
+    margin-bottom: 20px;
+  }
+
+  .clinics-header h2 {
+    margin: 0 0 10px;
+    font-size: 30px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+
+  .clinics-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .clinic-card,
+  .clinic-card.selected {
+    padding: 18px;
+  }
+
+  .clinic-card.selected {
+    padding: 17px;
+  }
+
+  .clinic-card-heading {
+    flex-wrap: wrap;
+  }
+
+  .clinic-card-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .clinic-card-actions {
+    flex-direction: column;
+  }
+
+  .clinic-card-select-button,
+  .clinic-edit-button {
+    width: 100%;
+    flex-basis: auto;
+  }
+}

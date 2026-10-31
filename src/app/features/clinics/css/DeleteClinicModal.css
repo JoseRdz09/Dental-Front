@@ -1,0 +1,163 @@
+
+.delete-clinic-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(4px);
+  animation: delete-clinic-fade-in 0.18s ease-out;
+}
+
+.delete-clinic-modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 30px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+  animation: delete-clinic-slide-in 0.2s ease-out;
+}
+
+.delete-clinic-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 20px;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 50%;
+}
+
+.delete-clinic-modal h2 {
+  margin: 0 0 12px;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.delete-clinic-question {
+  margin: 0 0 10px;
+  color: #6b7280;
+  font-size: 14px;
+  text-align: center;
+}
+
+.delete-clinic-name {
+  padding: 13px 16px;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+}
+
+.delete-clinic-warning {
+  padding: 13px 14px;
+  margin: 0 0 24px;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+}
+
+.delete-clinic-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.delete-clinic-actions button {
+  min-height: 42px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.delete-clinic-cancel {
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+}
+
+.delete-clinic-cancel:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.delete-clinic-confirm {
+  color: #fff;
+  background: #dc2626;
+  border: 1px solid #dc2626;
+}
+
+.delete-clinic-confirm:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.delete-clinic-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes delete-clinic-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes delete-clinic-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 480px) {
+  .delete-clinic-modal {
+    padding: 24px 20px;
+  }
+
+  .delete-clinic-actions {
+    flex-direction: column-reverse;
+  }
+
+  .delete-clinic-actions button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .delete-clinic-overlay,
+  .delete-clinic-modal {
+    animation: none;
+  }
+}
