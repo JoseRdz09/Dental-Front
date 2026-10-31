@@ -47,3 +47,9 @@ export async function updateClinic(
 
   return response.data.data;
 }
+
+export async function deleteClinic(
+  clinicId: number
+): Promise<void> {
+  await api.delete(`/api/clinics/${clinicId}`);
+}

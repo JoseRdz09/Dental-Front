@@ -1,29 +1,111 @@
-
 import { useState } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
 
 import { useAuth } from "../useAuth";
-
-import type { ApiErrorResponse } from "../../../../types/auth";
+import type {
+  ApiErrorResponse,
+  Organization,
+  Clinic,
+} from "../../../../types/auth";
 
 import "./LoginPage.css";
+
+/* -------------------------------------------------------------------------- */
+/* Rutas autorizadas                                                          */
+/* -------------------------------------------------------------------------- */
+
+const ROLE_ROUTES = {
+  owner: "/owner-dashboard",
+  clinic_admin: "/dashboard",
+} as const;
+
+/* -------------------------------------------------------------------------- */
+/* Obtener ruta según la relación del usuario                                 */
+/* -------------------------------------------------------------------------- */
+
+function getHomeRoute(
+  organizations?: Organization[],
+  clinics?: Clinic[]
+): string | undefined {
+  // El propietario se identifica mediante organization_user.
+  const isOwner = organizations?.some(
+    (organization) => organization.role === "owner"
+  );
+
+  if (isOwner) {
+    return ROLE_ROUTES.owner;
+  }
+
+  // El administrador clínico se identifica mediante clinic_user.
+  const isClinicAdmin = clinics?.some(
+    (clinic) => clinic.role === "clinic_admin"
+  );
+
+  if (isClinicAdmin) {
+    return ROLE_ROUTES.clinic_admin;
+  }
+
+  return undefined;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Manejo de errores                                                          */
+/* -------------------------------------------------------------------------- */
+
+function getErrorMessage(error: unknown): string {
+  if (axios.isAxiosError<ApiErrorResponse>(error)) {
+    const response = error.response;
+    const data = response?.data;
+
+    if (!response) {
+      return "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.";
+    }
+
+    if (response.status === 419) {
+      return "La sesión de seguridad expiró. Recarga la página e inténtalo de nuevo.";
+    }
+
+    if (data?.errors) {
+      const firstError = Object.values(data.errors)
+        .flat()
+        .find((message): message is string => typeof message === "string");
+
+      if (firstError) {
+        return firstError;
+      }
+    }
+
+    return data?.message ?? "No fue posible iniciar sesión.";
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Ocurrió un error inesperado.";
+}
+
+/* -------------------------------------------------------------------------- */
+/* Validación del formulario                                                  */
+/* -------------------------------------------------------------------------- */
 
 const loginSchema = z.object({
   email: z
     .string()
     .trim()
     .email("Introduce un correo electrónico válido."),
-  password: z
-    .string()
-    .min(1, "La contraseña es obligatoria."),
+  password: z.string().min(1, "La contraseña es obligatoria."),
 });
 
-
 type LoginFormData = z.infer<typeof loginSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* Componente                                                                 */
+/* -------------------------------------------------------------------------- */
 
 export default function LoginPage() {
   const { user, loading, signIn } = useAuth();
@@ -44,73 +126,59 @@ export default function LoginPage() {
     },
   });
 
-  if (loading) {
-    return <div className="auth-loading">Verificando sesión...</div>;
-  }
-
-  if (user) {
-    if (user.role === "owner") {
-      return <Navigate to="/owner" replace />;
-    }
-
-    if (user.role === "admin") {
-      return <Navigate to="/admin" replace />;
-    }
-
-    return <Navigate to="/login" replace />;
-  }
-
-  async function onSubmit(values: LoginFormData) {
+  async function onSubmit(values: LoginFormData): Promise<void> {
     setServerError("");
 
     try {
-      const authenticatedUser = await signIn(values);
+      const response = await signIn(values);
 
-      if (authenticatedUser.role === "owner") {
-        navigate("/owner", { replace: true });
-      } else if (authenticatedUser.role === "admin") {
-        navigate("/admin", { replace: true });
-      } else {
-        setServerError("El usuario no tiene un rol válido.");
+      const homeRoute = getHomeRoute(
+        response.organizations,
+        response.clinics
+      );
+
+      if (!homeRoute) {
+        setServerError(
+          "Tu cuenta no tiene un rol autorizado para acceder a estos paneles. Contacta al administrador."
+        );
+        return;
       }
+
+      navigate(homeRoute, { replace: true });
     } catch (error: unknown) {
-      if (axios.isAxiosError<ApiErrorResponse>(error)) {
-        const data = error.response?.data;
-        const validationErrors = data?.errors;
-
-        if (validationErrors) {
-          const firstError = Object.values(validationErrors).flat()[0];
-
-          setServerError(
-            firstError ?? "No fue posible iniciar sesión."
-          );
-        } else if (!error.response) {
-          setServerError(
-            "No se pudo conectar con el servidor. Comprueba que Laravel esté ejecutándose."
-          );
-        } else if (error.response.status === 419) {
-          setServerError(
-            "La sesión de seguridad expiró. Recarga la página e inténtalo de nuevo."
-          );
-        } else {
-          setServerError(
-            data?.message ?? "No fue posible iniciar sesión."
-          );
-        }
-      } else {
-        setServerError("Ocurrió un error inesperado.");
-      }
+      console.error("Error durante el inicio de sesión:", error);
+      setServerError(getErrorMessage(error));
     }
   }
 
-  
+  if (loading) {
+    return (
+      <div className="auth-loading" role="status">
+        Verificando sesión...
+      </div>
+    );
+  }
+
+  // Si ya existe una sesión, dirigir al usuario a su panel autorizado.
+  if (user) {
+    const existingHomeRoute = getHomeRoute(
+      user.organizations,
+      user.clinics
+    );
+
+    if (existingHomeRoute) {
+      return <Navigate to={existingHomeRoute} replace />;
+    }
+  }
 
   return (
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-brand">
           <div className="auth-logo">D</div>
-          <span>Dental<span className="brand-accent">Care</span></span>
+          <span>
+            Dental<span className="brand-accent">Care</span>
+          </span>
         </div>
 
         <div className="auth-heading">
@@ -127,11 +195,15 @@ export default function LoginPage() {
               type="email"
               autoComplete="username"
               placeholder="doctor@clinica.com"
-              aria-invalid={!!errors.email}
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? "email-error" : undefined}
               {...register("email")}
             />
+
             {errors.email && (
-              <span className="field-error">{errors.email.message}</span>
+              <span id="email-error" className="field-error">
+                {errors.email.message}
+              </span>
             )}
           </div>
 
@@ -144,24 +216,28 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 placeholder="Ingresa tu contraseña"
-                aria-invalid={!!errors.password}
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={
+                  errors.password ? "password-error" : undefined
+                }
                 {...register("password")}
               />
 
               <button
                 type="button"
                 className="password-toggle"
-                onClick={() => setShowPassword((value) => !value)}
+                onClick={() => setShowPassword((visible) => !visible)}
                 aria-label={
                   showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
                 }
+                aria-pressed={showPassword}
               >
                 {showPassword ? "Ocultar" : "Mostrar"}
               </button>
             </div>
 
             {errors.password && (
-              <span className="field-error">
+              <span id="password-error" className="field-error">
                 {errors.password.message}
               </span>
             )}

@@ -4,8 +4,10 @@ import AppointmentCalendar from "../components/AppoinmentCalendar";
 import AppointmentFormModal from "../components/Appointmentformmodal";
 import type { AppointmentFormValues } from "../types/appointmentForm";
 import { useAppointments } from "../hooks/useAppointments";
-import { useClinic } from "../../clinics/hooks/useClinic";
-import { appointmentToFormValues, slotToFormValues } from "../utils/Datetime";
+import {
+  appointmentToFormValues,
+  slotToFormValues,
+} from "../utils/Datetime";
 
 interface ModalState {
   mode: "create" | "edit";
@@ -14,19 +16,13 @@ interface ModalState {
 
 export default function AppointmentsPage() {
   const {
-    clinicId,
-    loading: clinicLoading,
-    error: clinicError,
-  } = useClinic();
-
-  const {
     appointments,
     loading,
     error,
     reloadAppointments,
     saveAppointment,
     moveAppointment,
-  } = useAppointments(clinicId);
+  } = useAppointments();
 
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,6 +38,7 @@ export default function AppointmentsPage() {
   const handleSubmit = async (values: AppointmentFormValues) => {
     setSaving(true);
     setActionError(null);
+
     try {
       await saveAppointment(values);
       setModal(null);
@@ -58,10 +55,15 @@ export default function AppointmentsPage() {
     range: { start: string; end: string },
   ): Promise<boolean> => {
     setActionError(null);
+
     try {
       const ok = await moveAppointment(appointmentId, range);
-      if (!ok) setActionError("No se pudo mover la cita.");
-      return ok; // <- ahora respeta el resultado
+
+      if (!ok) {
+        setActionError("No se pudo mover la cita.");
+      }
+
+      return ok;
     } catch (err) {
       console.error("Error al mover la cita:", err);
       setActionError("No se pudo mover la cita.");
@@ -69,12 +71,6 @@ export default function AppointmentsPage() {
     }
   };
 
-  // ── Estados de la clínica (después de todos los hooks) ──
-  if (clinicLoading) return <p>Cargando clínica...</p>;
-  if (clinicError) return <p>{clinicError}</p>;
-  if (clinicId == null) return <p>No tienes una clínica asignada.</p>;
-
-  // Bloquea solo la primera carga; después el calendario sigue montado.
   if (loading && appointments.length === 0 && !error) {
     return <p>Cargando citas...</p>;
   }
@@ -83,7 +79,11 @@ export default function AppointmentsPage() {
     return (
       <div>
         <p>{error}</p>
-        <button type="button" onClick={() => void reloadAppointments()}>
+
+        <button
+          type="button"
+          onClick={() => void reloadAppointments()}
+        >
           Reintentar
         </button>
       </div>
@@ -93,15 +93,24 @@ export default function AppointmentsPage() {
   return (
     <>
       {actionError && <p role="alert">{actionError}</p>}
-      {loading && <p aria-live="polite">Actualizando...</p>}
+
+      {loading && (
+        <p aria-live="polite">Actualizando...</p>
+      )}
 
       <AppointmentCalendar
         appointments={appointments}
         onSelectAppointment={(appointment) =>
-          setModal({ mode: "edit", values: appointmentToFormValues(appointment) })
+          setModal({
+            mode: "edit",
+            values: appointmentToFormValues(appointment),
+          })
         }
         onSlotClick={(dateStr, allDay) =>
-          setModal({ mode: "create", values: slotToFormValues(dateStr, allDay) })
+          setModal({
+            mode: "create",
+            values: slotToFormValues(dateStr, allDay),
+          })
         }
         onMoveAppointment={(appointment, range) =>
           handleMoveAppointment(String(appointment.id), range)
@@ -114,7 +123,6 @@ export default function AppointmentsPage() {
           initialValues={modal.values}
           onSubmit={handleSubmit}
           onClose={closeModal}
-          // loading={saving}  // descomenta si tu modal lo admite
         />
       )}
     </>

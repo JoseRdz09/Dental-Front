@@ -1,20 +1,33 @@
+
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { X, UserPlus, LoaderCircle } from "lucide-react";
+import {
+  X,
+  UserPlus,
+  LoaderCircle,
+  Copy,
+  Check,
+} from "lucide-react";
+
+import { createClinicTeamMember } from "../services/clinicTeamServices";
+
+import {
+  CLINIC_TEAM_ROLES,
+} from "../types/clinicTeam";
+
+import type {
+  ClinicTeamRole,
+  ClinicTeamCreateModalProps,
+} from "../types/clinicTeam";
+
 import "../css/ClinicTeamCreateModal.css";
 
-interface ClinicTeamCreateModalProps {
-  clinicId: number;
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-type ClinicRole = "clinic_admin" | "dentist" | "receptionist";
-
-interface CreateTeamMemberResponse {
-  message?: string;
-  temporary_password?: string;
-}
+const ROLE_LABELS: Record<ClinicTeamRole, string> = {
+  dentist: "Odontólogo",
+  assistant: "Asistente dental",
+  clinic_admin: "Recepcionista",
+  cashier: "Cajero",
+};
 
 export default function ClinicTeamCreateModal({
   clinicId,
@@ -23,18 +36,25 @@ export default function ClinicTeamCreateModal({
 }: ClinicTeamCreateModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<ClinicRole>("dentist");
+  const [role, setRole] = useState<ClinicTeamRole>("dentist");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
+
+    if (loading) return;
 
     setError("");
     setSuccessMessage("");
     setTemporaryPassword("");
+    setCopied(false);
 
     const normalizedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
@@ -47,86 +67,42 @@ export default function ClinicTeamCreateModal({
     setLoading(true);
 
     try {
-      // Obtener la cookie CSRF de Laravel Sanctum.
-      const csrfResponse = await fetch(
-        "http://localhost:8000/sanctum/csrf-cookie",
-        {
-          credentials: "include",
-          headers: { Accept: "application/json" },
-        }
+      const data = await createClinicTeamMember(clinicId, {
+        name: normalizedName,
+        email: normalizedEmail,
+        role,
+      });
+
+      setSuccessMessage(
+        data.message || "Integrante creado correctamente.",
       );
 
-      if (!csrfResponse.ok) {
-        throw new Error("No se pudo preparar la sesión de seguridad.");
-      }
-
-      // Leer la cookie XSRF-TOKEN.
-      const xsrfCookie = document.cookie
-        .split("; ")
-        .find((cookie) => cookie.startsWith("XSRF-TOKEN="))
-        ?.split("=")
-        .slice(1)
-        .join("=");
-
-      if (!xsrfCookie) {
-        throw new Error(
-          "No se encontró la cookie de seguridad. Verifica la configuración de Sanctum."
-        );
-      }
-
-      const response = await fetch(
-        `http://localhost:8000/api/clinics/${clinicId}/team`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            "X-XSRF-TOKEN": decodeURIComponent(xsrfCookie),
-          },
-          body: JSON.stringify({
-            name: normalizedName,
-            email: normalizedEmail,
-            role,
-          }),
-        }
-      );
-
-      const data = (await response.json().catch(() => ({}))) as
-        | CreateTeamMemberResponse
-        | {
-            message?: string;
-            errors?: Record<string, string[]>;
-          };
-
-      if (!response.ok) {
-        const validationErrors =
-          "errors" in data && data.errors
-            ? Object.values(data.errors).flat().join(" ")
-            : "";
-
-        throw new Error(
-          validationErrors ||
-            data.message ||
-            "No se pudo crear el integrante."
-        );
-      }
-
-      setSuccessMessage(data.message || "Integrante creado correctamente.");
-
-      if ("temporary_password" in data && data.temporary_password) {
+      if (data.temporary_password) {
         setTemporaryPassword(data.temporary_password);
       } else {
         onCreated();
       }
-    } catch (err) {
+    } catch (error: unknown) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error inesperado."
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error inesperado.",
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCopyPassword() {
+    if (!temporaryPassword) return;
+
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      setCopied(true);
+      setError("");
+    } catch {
+      setCopied(false);
+      setError("No se pudo copiar la contraseña.");
     }
   }
 
@@ -138,7 +114,11 @@ export default function ClinicTeamCreateModal({
     <div
       className="clinic-team-create-modal__overlay"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !loading) {
+        if (
+          event.target === event.currentTarget &&
+          !loading &&
+          !temporaryPassword
+        ) {
           onClose();
         }
       }}
@@ -159,7 +139,9 @@ export default function ClinicTeamCreateModal({
               <h2 id="clinic-team-create-title">
                 Agregar integrante
               </h2>
-              <p>Registra un nuevo integrante del equipo clínico.</p>
+              <p>
+                Registra un nuevo integrante del equipo clínico.
+              </p>
             </div>
           </div>
 
@@ -167,7 +149,7 @@ export default function ClinicTeamCreateModal({
             type="button"
             className="clinic-team-create-modal__close"
             onClick={onClose}
-            disabled={loading}
+            disabled={loading || Boolean(temporaryPassword)}
             aria-label="Cerrar modal"
           >
             <X size={20} />
@@ -177,23 +159,53 @@ export default function ClinicTeamCreateModal({
         {temporaryPassword ? (
           <div className="clinic-team-create-modal__result">
             <h3>Integrante creado</h3>
-            <p>{successMessage}</p>
+
+            <p role="status">{successMessage}</p>
+
             <p>
-              El backend devolvió una contraseña temporal. Compártela
-              únicamente mediante un canal seguro y solicita que se cambie
-              al iniciar sesión.
+              Comparte la contraseña mediante un canal seguro y
+              solicita que se cambie al iniciar sesión.
             </p>
 
             <label htmlFor="temporary-password">
               Contraseña temporal
             </label>
 
-            <input
-              id="temporary-password"
-              type="text"
-              readOnly
-              value={temporaryPassword}
-            />
+            <div className="clinic-team-create-modal__password">
+              <input
+                id="temporary-password"
+                type="text"
+                readOnly
+                value={temporaryPassword}
+                autoComplete="off"
+                spellCheck={false}
+              />
+
+              <button
+                type="button"
+                onClick={handleCopyPassword}
+                aria-label="Copiar contraseña temporal"
+              >
+                {copied ? (
+                  <Check size={18} />
+                ) : (
+                  <Copy size={18} />
+                )}
+              </button>
+            </div>
+
+            {copied && (
+              <p role="status">Contraseña copiada.</p>
+            )}
+
+            {error && (
+              <div
+                className="clinic-team-create-modal__error"
+                role="alert"
+              >
+                {error}
+              </div>
+            )}
 
             <button
               type="button"
@@ -209,22 +221,19 @@ export default function ClinicTeamCreateModal({
             onSubmit={handleSubmit}
           >
             {error && (
-              <div className="clinic-team-create-modal__error" role="alert">
+              <div
+                className="clinic-team-create-modal__error"
+                role="alert"
+              >
                 {error}
               </div>
             )}
 
-            {successMessage && (
-              <div
-                className="clinic-team-create-modal__success"
-                role="status"
-              >
-                {successMessage}
-              </div>
-            )}
-
             <div className="clinic-team-create-modal__field">
-              <label htmlFor="team-member-name">Nombre completo</label>
+              <label htmlFor="team-member-name">
+                Nombre completo
+              </label>
+
               <input
                 id="team-member-name"
                 type="text"
@@ -242,6 +251,7 @@ export default function ClinicTeamCreateModal({
               <label htmlFor="team-member-email">
                 Correo electrónico
               </label>
+
               <input
                 id="team-member-email"
                 type="email"
@@ -256,18 +266,29 @@ export default function ClinicTeamCreateModal({
             </div>
 
             <div className="clinic-team-create-modal__field">
-              <label htmlFor="team-member-role">Rol en la clínica</label>
+              <label htmlFor="team-member-role">
+                Rol en la clínica
+              </label>
+
               <select
                 id="team-member-role"
                 value={role}
-                onChange={(event) =>
-                  setRole(event.target.value as ClinicRole)
-                }
+                onChange={(event) => {
+                  const selectedRole = CLINIC_TEAM_ROLES.find(
+                    (item) => item === event.target.value,
+                  );
+
+                  if (selectedRole) {
+                    setRole(selectedRole);
+                  }
+                }}
                 disabled={loading}
               >
-                <option value="dentist">Dentista</option>
-                <option value="receptionist">Recepcionista</option>
-                <option value="clinic_admin">Administrador de clínica</option>
+                {CLINIC_TEAM_ROLES.map((item) => (
+                  <option key={item} value={item}>
+                    {ROLE_LABELS[item]}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -288,7 +309,10 @@ export default function ClinicTeamCreateModal({
               >
                 {loading ? (
                   <>
-                    <LoaderCircle size={17} className="clinic-team-create-modal__spinner" />
+                    <LoaderCircle
+                      size={17}
+                      className="clinic-team-create-modal__spinner"
+                    />
                     Creando...
                   </>
                 ) : (

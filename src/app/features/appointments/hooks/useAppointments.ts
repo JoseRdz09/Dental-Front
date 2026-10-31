@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 
 import type { Appointment } from "../types/appointment";
@@ -6,82 +5,60 @@ import type { AppointmentFormValues } from "../types/appointmentForm";
 import { getAppointments } from "../services/appointmentService";
 import { formValuesToRange } from "../utils/Datetime";
 
-export function useAppointments(
-  clinicId: number | null | undefined,
-  start?: string,
-  end?: string,
-) {
+interface Clinic {
+  id: number;
+  name: string;
+}
+
+// Comparte la petición en curso entre ejecuciones del hook
+// con los mismos parámetros.
+const pendingRequests = new Map<
+  string,
+  ReturnType<typeof getAppointments>
+>();
+
+function requestAppointments(start?: string, end?: string) {
+  const key = `${start ?? ""}|${end ?? ""}`;
+
+  const existingRequest = pendingRequests.get(key);
+
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = getAppointments(undefined, start, end);
+  pendingRequests.set(key, request);
+
+  void request.finally(() => {
+    if (pendingRequests.get(key) === request) {
+      pendingRequests.delete(key);
+    }
+  }).catch(() => {
+    // El error original se gestiona en fetchAppointments.
+  });
+
+  return request;
+}
+
+export function useAppointments(start?: string, end?: string) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [clinicId, setClinicId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function fetchAppointments() {
-      if (clinicId == null) {
-        setAppointments([]);
-        setLoading(false);
-        return; // sin error: aún no hay clínica
-      }
-      if (!Number.isInteger(clinicId) || clinicId <= 0) {
-        setAppointments([]);
-        setLoading(false);
-        setError("Selecciona una clínica válida para cargar las citas.");
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const data = await getAppointments(clinicId, start, end);
-
-        if (active) {
-          setAppointments(data);
-        }
-      } catch (err) {
-        console.error("Error al cargar las citas:", err);
-
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "No se pudieron cargar las citas.",
-          );
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void fetchAppointments();
-
-    return () => {
-      active = false;
-    };
-  }, [clinicId, start, end]);
-
-  const reloadAppointments = useCallback(async () => {
-    if (
-      clinicId == null ||
-      !Number.isInteger(clinicId) ||
-      clinicId <= 0
-    ) {
-      setError("Selecciona una clínica válida para cargar las citas.");
-      return;
-    }
-
+  const fetchAppointments = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const data = await getAppointments(clinicId, start, end);
-      setAppointments(data);
+      const response = await requestAppointments(start, end);
+
+      setClinics(response.clinics);
+      setClinicId(response.selected_clinic_id);
+      setAppointments(response.data);
     } catch (err) {
-      console.error("Error al recargar las citas:", err);
+      console.error("Error al cargar las citas:", err);
 
       setError(
         err instanceof Error
@@ -91,7 +68,50 @@ export function useAppointments(
     } finally {
       setLoading(false);
     }
-  }, [clinicId, start, end]);
+  }, [start, end]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await requestAppointments(start, end);
+
+        if (!active) return;
+
+        setClinics(response.clinics);
+        setClinicId(response.selected_clinic_id);
+        setAppointments(response.data);
+      } catch (err) {
+        if (!active) return;
+
+        console.error("Error al cargar las citas:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar las citas.",
+        );
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [start, end]);
+
+  const reloadAppointments = useCallback(async () => {
+    await fetchAppointments();
+  }, [fetchAppointments]);
 
   const saveAppointment = useCallback(
     async (values: AppointmentFormValues) => {
@@ -136,10 +156,7 @@ export function useAppointments(
   );
 
   const moveAppointment = useCallback(
-    async (
-      id: string,
-      range: { start: string; end: string },
-    ) => {
+    async (id: string, range: { start: string; end: string }) => {
       setAppointments((prev) =>
         prev.map((appointment) =>
           String(appointment.id) === id
@@ -155,6 +172,8 @@ export function useAppointments(
 
   return {
     appointments,
+    clinics,
+    clinicId,
     loading,
     error,
     reloadAppointments,

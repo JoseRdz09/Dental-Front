@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useClinic } from "../hooks/useClinic";
 import "../css/ClinicsOrganizations.css";
 import EditClinicModal from "../components/EditClinicModal";
+import CreateClinicModal from "../components/CreateClinicModal";
 import type { Clinic } from "../types/clinic";
 
 export default function ClinicsOrganizations() {
@@ -15,40 +16,75 @@ export default function ClinicsOrganizations() {
   const [editingClinic, setEditingClinic] =
     useState<Clinic | null>(null);
 
+  const [creatingClinic, setCreatingClinic] = useState(false);
+
   const [updatedClinics, setUpdatedClinics] =
     useState<Record<number, Clinic>>({});
 
-  const clinics = loadedClinics.map(
-    (clinic) => updatedClinics[clinic.id] ?? clinic
-  );
+  const [newClinics, setNewClinics] = useState<Clinic[]>([]);
 
-  if (loading) {
-    return (
-      <section className="clinics-organizations">
-        <p>Cargando clínicas...</p>
-      </section>
-    );
-  }
+  // IDs de clínicas eliminadas durante esta sesión.
+  const [deletedClinicIds, setDeletedClinicIds] =
+    useState<Set<number>>(() => new Set());
 
-  if (error) {
-    return (
-      <section className="clinics-organizations">
-        <p className="clinics-error">{error}</p>
-      </section>
+  // 1. Combinar las clínicas originales con las actualizaciones.
+  const clinicsMap = new Map<number, Clinic>();
+
+  loadedClinics.forEach((clinic) => {
+    if (deletedClinicIds.has(Number(clinic.id))) {
+      return;
+    }
+
+    clinicsMap.set(
+      clinic.id,
+      updatedClinics[clinic.id] ?? clinic
     );
-  }
+  });
+
+  // 2. Agregar clínicas creadas localmente sin duplicar IDs.
+  newClinics.forEach((clinic) => {
+    if (deletedClinicIds.has(Number(clinic.id))) {
+      return;
+    }
+
+    if (!clinicsMap.has(clinic.id)) {
+      clinicsMap.set(
+        clinic.id,
+        updatedClinics[clinic.id] ?? clinic
+      );
+    }
+  });
+
+  // 3. Obtener el listado final sin IDs duplicados.
+  const clinics = Array.from(clinicsMap.values());
 
   return (
     <section className="clinics-organizations">
       <header className="clinics-header">
         <div>
           <h2>Mis clínicas</h2>
-          <p>Clínicas disponibles: {clinics.length}</p>
+          <p>Administra las clínicas de tu organización.</p>
         </div>
+
+        <button
+          type="button"
+          className="clinic-create-button"
+          onClick={() => setCreatingClinic(true)}
+        >
+          <span aria-hidden="true">+</span>
+          Agregar nueva clínica
+        </button>
       </header>
 
-      {clinics.length === 0 ? (
-        <p>No tienes clínicas disponibles.</p>
+      {loading ? (
+        <p>Cargando clínicas...</p>
+      ) : error ? (
+        <p className="clinics-error">{error}</p>
+      ) : clinics.length === 0 ? (
+        <div className="clinics-empty">
+          <p>No tienes clínicas disponibles.</p>
+          <p>Agrega tu primera clínica para comenzar.</p>
+        </div>
       ) : (
         <div className="clinics-grid">
           {clinics.map((clinic) => (
@@ -139,7 +175,6 @@ export default function ClinicsOrganizations() {
                     {clinic.timezone || "No configurada"}
                   </span>
                 </div>
-
               </div>
 
               <div className="clinic-card-actions">
@@ -156,6 +191,30 @@ export default function ClinicsOrganizations() {
         </div>
       )}
 
+      {creatingClinic && (
+        <CreateClinicModal
+          onClose={() => setCreatingClinic(false)}
+          onSaved={(createdClinic) => {
+            // Si el backend reutiliza un ID, permitir mostrarlo
+            // solo cuando realmente se haya creado correctamente.
+            setDeletedClinicIds((previous) => {
+              const updated = new Set(previous);
+              updated.delete(Number(createdClinic.id));
+              return updated;
+            });
+
+            setNewClinics((previous) => [
+              ...previous.filter(
+                (clinic) => clinic.id !== createdClinic.id
+              ),
+              createdClinic,
+            ]);
+
+            setCreatingClinic(false);
+          }}
+        />
+      )}
+
       {editingClinic && (
         <EditClinicModal
           key={editingClinic.id}
@@ -166,6 +225,31 @@ export default function ClinicsOrganizations() {
               ...previous,
               [updatedClinic.id]: updatedClinic,
             }));
+
+            setEditingClinic(null);
+          }}
+          onDeleted={(clinicId) => {
+            const id = Number(clinicId);
+
+            // Ocultar inmediatamente la clínica del listado.
+            setDeletedClinicIds((previous) => {
+              const updated = new Set(previous);
+              updated.add(id);
+              return updated;
+            });
+
+            // Limpiar los datos locales de esa clínica.
+            setUpdatedClinics((previous) => {
+              const updated = { ...previous };
+              delete updated[id];
+              return updated;
+            });
+
+            setNewClinics((previous) =>
+              previous.filter(
+                (clinic) => Number(clinic.id) !== id
+              )
+            );
 
             setEditingClinic(null);
           }}

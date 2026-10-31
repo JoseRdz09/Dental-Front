@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -7,21 +6,30 @@ import {
 } from "react";
 
 import * as authService from "./services/authServices";
-import type { LoginCredentials, User } from "../../../types/auth";
+import type {
+  LoginCredentials,
+  LoginResponse,
+  User,
+} from "../../../types/auth";
 import { AuthContext } from "./AuthContext";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Recuperar la sesión existente.
   useEffect(() => {
     let active = true;
 
     authService
       .getCurrentUser()
-      .then(({ user }) => {
+      .then(({ user, organizations, clinics }) => {
         if (active) {
-          setUser(user);
+          setUser({
+            ...user,
+            organizations,
+            clinics,
+          });
         }
       })
       .catch(() => {
@@ -40,22 +48,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Iniciar sesión y conservar los roles de organización y clínica.
   const signIn = useCallback(
-    async (credentials: LoginCredentials) => {
+    async (credentials: LoginCredentials): Promise<LoginResponse> => {
       const response = await authService.login(credentials);
 
-      setUser(response.user);
+      setUser({
+        ...response.user,
+        organizations: response.organizations,
+        clinics: response.clinics,
+      });
 
-      return response.user;
+      return response;
     },
     []
   );
 
-  
-
+  // Cerrar sesión.
   const signOut = useCallback(async () => {
-    await authService.logout();
-    setUser(null);
+    try {
+      await authService.logout();
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   return (

@@ -23,17 +23,17 @@ interface SidebarProps {
 }
 
 const ownerMenuItems = [
-  { label: "Inicio", path: "/owner", icon: LayoutDashboard },
-  { label: "Clínicas", path: "/owner/clinics", icon: Building2 },
-  { label: "Equipo Clinico", path: "/owner/users", icon: Users },
-  { label: "Facturación", path: "/owner/billing", icon: CreditCard },
-  { label: "Configuración", path: "/owner/settings", icon: Settings },
+  { label: "Inicio", path: "/owner-dashboard", icon: LayoutDashboard },
+  { label: "Clínicas", path: "/clinics", icon: Building2 },
+  { label: "Equipo Clínico", path: "/team", icon: Users },
+  { label: "Facturación", path: "/billing", icon: CreditCard },
+  { label: "Configuración", path: "/owner-settings", icon: Settings },
 ];
 
 const adminMenuItems = [
-  { label: "Calendario", path: "/admin", icon: CalendarDays },
-  { label: "Lista de pacientes", path: "/admin/patients", icon: Users },
-  { label: "Ajustes", path: "/admin/settings", icon: Settings },
+  { label: "Calendario", path: "/dashboard", icon: CalendarDays },
+  { label: "Lista de pacientes", path: "/patients", icon: Users },
+  { label: "Ajustes", path: "/settings", icon: Settings },
 ];
 
 const MOBILE_BREAKPOINT = 768;

@@ -8,8 +8,13 @@ export function useClinicTeam(clinicId: number | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadedClinicId, setLoadedClinicId] = useState<number | null>(
+    null
+  );
 
   const reload = useCallback(() => {
+    setLoading(true);
+    setError(null);
     setReloadKey((previous) => previous + 1);
   }, []);
 
@@ -17,12 +22,16 @@ export function useClinicTeam(clinicId: number | null) {
     let cancelled = false;
 
     async function fetchTeam() {
-      if (!clinicId || clinicId <= 0) {
+      if (clinicId === null || clinicId <= 0) {
         setMembers([]);
         setError("Selecciona una clínica para consultar su equipo.");
+        setLoadedClinicId(null);
         setLoading(false);
         return;
       }
+
+      setLoading(true);
+      setError(null);
 
       try {
         const response = await getClinicTeam(clinicId);
@@ -30,13 +39,12 @@ export function useClinicTeam(clinicId: number | null) {
         if (cancelled) return;
 
         setMembers(response.data);
-        setError(null);
       } catch (err: unknown) {
         if (cancelled) return;
 
-        setMembers([]);
-
-        const message =
+        // No borramos los integrantes anteriores.
+        // Mostramos el error por separado.
+        const responseMessage =
           typeof err === "object" &&
           err !== null &&
           "response" in err &&
@@ -48,11 +56,15 @@ export function useClinicTeam(clinicId: number | null) {
           "message" in err.response.data &&
           typeof err.response.data.message === "string"
             ? err.response.data.message
-            : "No fue posible cargar el equipo clínico.";
+            : null;
 
-        setError(message);
+        setError(
+          responseMessage ??
+            "No fue posible cargar el equipo clínico."
+        );
       } finally {
         if (!cancelled) {
+          setLoadedClinicId(clinicId);
           setLoading(false);
         }
       }
@@ -65,10 +77,18 @@ export function useClinicTeam(clinicId: number | null) {
     };
   }, [clinicId, reloadKey]);
 
+  // Evita mostrar una lista vacía durante el primer render
+  // cuando cambia la clínica seleccionada.
+  const isLoading =
+    loading ||
+    (clinicId !== null &&
+      clinicId > 0 &&
+      loadedClinicId !== clinicId);
+
   return {
     members,
     total: members.length,
-    loading,
+    loading: isLoading,
     error,
     reload,
   };
