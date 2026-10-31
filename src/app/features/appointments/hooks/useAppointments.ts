@@ -1,24 +1,39 @@
+
 import { useCallback, useEffect, useState } from "react";
 
 import type { Appointment } from "../types/appointment";
 import type { AppointmentFormValues } from "../types/appointmentForm";
-import { getAppointments } from "../services/appointmentService";
-import { formValuesToRange } from "../utils/Datetime";
 
-interface Clinic {
-  id: number;
-  name: string;
+import {
+  createAppointment,
+  updateAppointment,
+  formValuesToPayload,
+  getAppointments,
+  type ApiAppointmentOptions,
+  type ApiClinic,
+} from "../services/appointmentService";
+
+interface RequestResult {
+  clinics: ApiClinic[];
+  selected_clinic_id: number | null;
+  data: Appointment[];
+  options: ApiAppointmentOptions;
 }
 
-// Comparte la petición en curso entre ejecuciones del hook
-// con los mismos parámetros.
-const pendingRequests = new Map<
-  string,
-  ReturnType<typeof getAppointments>
->();
+const EMPTY_OPTIONS: ApiAppointmentOptions = {
+  patients: [],
+  dentists: [],
+  treatments: [],
+};
 
-function requestAppointments(start?: string, end?: string) {
-  const key = `${start ?? ""}|${end ?? ""}`;
+const pendingRequests = new Map<string, ReturnType<typeof getAppointments>>();
+
+function requestAppointments(
+  clinicId?: number | null,
+  start?: string,
+  end?: string,
+) {
+  const key = `${clinicId ?? ""}|${start ?? ""}|${end ?? ""}`;
 
   const existingRequest = pendingRequests.get(key);
 
@@ -26,7 +41,8 @@ function requestAppointments(start?: string, end?: string) {
     return existingRequest;
   }
 
-  const request = getAppointments(undefined, start, end);
+  const request = getAppointments(clinicId, start, end);
+
   pendingRequests.set(key, request);
 
   void request.finally(() => {
@@ -34,7 +50,7 @@ function requestAppointments(start?: string, end?: string) {
       pendingRequests.delete(key);
     }
   }).catch(() => {
-    // El error original se gestiona en fetchAppointments.
+    // El error original se maneja en fetchAppointments.
   });
 
   return request;
@@ -42,8 +58,11 @@ function requestAppointments(start?: string, end?: string) {
 
 export function useAppointments(start?: string, end?: string) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [clinics, setClinics] = useState<ApiClinic[]>([]);
   const [clinicId, setClinicId] = useState<number | null>(null);
+  const [options, setOptions] =
+    useState<ApiAppointmentOptions>(EMPTY_OPTIONS);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,11 +71,16 @@ export function useAppointments(start?: string, end?: string) {
     setError(null);
 
     try {
-      const response = await requestAppointments(start, end);
+      const response: RequestResult = await requestAppointments(
+        clinicId,
+        start,
+        end,
+      );
 
       setClinics(response.clinics);
       setClinicId(response.selected_clinic_id);
       setAppointments(response.data);
+      setOptions(response.options ?? EMPTY_OPTIONS);
     } catch (err) {
       console.error("Error al cargar las citas:", err);
 
@@ -68,7 +92,7 @@ export function useAppointments(start?: string, end?: string) {
     } finally {
       setLoading(false);
     }
-  }, [start, end]);
+  }, [clinicId, start, end]);
 
   useEffect(() => {
     let active = true;
@@ -78,13 +102,18 @@ export function useAppointments(start?: string, end?: string) {
       setError(null);
 
       try {
-        const response = await requestAppointments(start, end);
+        const response = await requestAppointments(
+          clinicId,
+          start,
+          end,
+        );
 
         if (!active) return;
 
         setClinics(response.clinics);
         setClinicId(response.selected_clinic_id);
         setAppointments(response.data);
+        setOptions(response.options ?? EMPTY_OPTIONS);
       } catch (err) {
         if (!active) return;
 
@@ -96,9 +125,7 @@ export function useAppointments(start?: string, end?: string) {
             : "No se pudieron cargar las citas.",
         );
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -107,7 +134,7 @@ export function useAppointments(start?: string, end?: string) {
     return () => {
       active = false;
     };
-  }, [start, end]);
+  }, [start, end, clinicId]);
 
   const reloadAppointments = useCallback(async () => {
     await fetchAppointments();
@@ -115,65 +142,78 @@ export function useAppointments(start?: string, end?: string) {
 
   const saveAppointment = useCallback(
     async (values: AppointmentFormValues) => {
-      const { start: appointmentStart, end: appointmentEnd } =
-        formValuesToRange(values);
-
-      if (values.id) {
-        setAppointments((prev) =>
-          prev.map((appointment) =>
-            String(appointment.id) === values.id
-              ? {
-                  ...appointment,
-                  patientName: values.patientName,
-                  treatment: values.treatment,
-                  dentist: values.dentist,
-                  details: values.details,
-                  status: values.status,
-                  start: appointmentStart,
-                  end: appointmentEnd,
-                }
-              : appointment,
-          ),
-        );
-
-        return;
+      if (!clinicId) {
+        throw new Error("No hay una clínica seleccionada.");
       }
 
-      const created: Appointment = {
-        id: crypto.randomUUID(),
-        patientName: values.patientName,
-        treatment: values.treatment,
-        dentist: values.dentist,
-        details: values.details,
-        status: values.status,
-        start: appointmentStart,
-        end: appointmentEnd,
-      };
+      const payload = formValuesToPayload(values, clinicId);
 
-      setAppointments((prev) => [...prev, created]);
+      if (values.id) {
+        await updateAppointment(values.id, payload);
+      } else {
+        await createAppointment(payload);
+      }
+
+      await fetchAppointments();
     },
-    [],
+    [clinicId, fetchAppointments],
   );
 
   const moveAppointment = useCallback(
-    async (id: string, range: { start: string; end: string }) => {
-      setAppointments((prev) =>
-        prev.map((appointment) =>
-          String(appointment.id) === id
-            ? { ...appointment, ...range }
-            : appointment,
-        ),
+    async (
+      id: string,
+      range: { start: string; end: string },
+    ): Promise<boolean> => {
+      if (!clinicId) {
+        return false;
+      }
+
+      const appointment = appointments.find(
+        (item) => String(item.id) === id,
       );
 
-      return true;
+      if (!appointment) {
+        return false;
+      }
+
+      if (
+        appointment.patientId === null ||
+        appointment.treatmentId === null
+      ) {
+        return false;
+      }
+
+      try {
+        await updateAppointment(id, {
+          clinic_id: clinicId,
+          patient_id: appointment.patientId,
+          dentist_user_id: appointment.dentistUserId,
+          treatment_id: appointment.treatmentId,
+          start_at: range.start,
+          end_at: range.end,
+          status: appointment.status,
+          notes: appointment.details,
+        });
+
+        await fetchAppointments();
+
+        return true;
+      } catch (error) {
+        console.error("Error al actualizar la cita:", error);
+
+        await fetchAppointments();
+
+        return false;
+      }
     },
-    [],
+    [clinicId, appointments, fetchAppointments],
   );
 
   return {
     appointments,
     clinics,
     clinicId,
+    options,
     loading,
     error,
     reloadAppointments,

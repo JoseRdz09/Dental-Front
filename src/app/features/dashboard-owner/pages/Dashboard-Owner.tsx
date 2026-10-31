@@ -1,11 +1,13 @@
-
 import { useState } from "react";
 
 import AppointmentCalendar from "../../appointments/components/AppoinmentCalendar";
 import AppointmentFormModal from "../../appointments/components/Appointmentformmodal";
 import type { AppointmentFormValues } from "../../appointments/types/appointmentForm";
 import { useAppointments } from "../../appointments/hooks/useAppointments";
-import { appointmentToFormValues, slotToFormValues } from "../../appointments/utils/Datetime";
+import {
+  appointmentToFormValues,
+  slotToFormValues,
+} from "../../appointments/utils/Datetime";
 
 interface ModalState {
   mode: "create" | "edit";
@@ -13,8 +15,9 @@ interface ModalState {
 }
 
 export default function OwnerDashboard() {
-const {
+  const {
     appointments,
+    options,
     loading,
     error,
     reloadAppointments,
@@ -42,7 +45,11 @@ const {
       setModal(null);
     } catch (err) {
       console.error("Error al guardar la cita:", err);
-      setActionError("No se pudo guardar la cita. Intenta nuevamente.");
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo guardar la cita. Intenta nuevamente.",
+      );
     } finally {
       setSaving(false);
     }
@@ -119,6 +126,7 @@ const {
         <AppointmentFormModal
           mode={modal.mode}
           initialValues={modal.values}
+          options={options}
           onSubmit={handleSubmit}
           onClose={closeModal}
         />
