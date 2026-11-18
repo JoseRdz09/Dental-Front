@@ -7,7 +7,20 @@
   color: var(--text-primary, #202938);
 }
 
+/* Pnatalla de carga */
+.patients-page__loading {
+  height: 800px;
+  padding: 0;
+}
+
 /** Barra de navegacion **/
+
+/* Ocultar la X nativa del input type="search" */
+.patients-page__search input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .patients-page__search {
   display: flex;
   align-items: center;
@@ -111,12 +124,12 @@
 }
 
 .patient-button--primary {
-  background: #2457d6;
+  background: #172554;
   color: #fff;
 }
 
 .patient-button--primary:hover:not(:disabled) {
-  background: #1948bd;
+  background: #2563eb;
 }
 
 .patient-button--secondary {
@@ -335,34 +348,11 @@
   gap: 8px;
 }
 
-.patients-page__alert {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px 16px;
-  border: 1px solid;
-  border-radius: 9px;
-  font-size: 13px;
-}
-
 .patients-page__alert button {
   border: 0;
   background: transparent;
   font-size: 20px;
   cursor: pointer;
-}
-
-.patients-page__alert--error {
-  border-color: #f0caca;
-  background: #fff5f5;
-  color: #a12626;
-}
-
-.patients-page__alert--success {
-  border-color: #c6ead3;
-  background: #f0fbf4;
-  color: #17683b;
 }
 
 @media (max-width: 700px) {

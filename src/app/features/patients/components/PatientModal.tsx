@@ -2,7 +2,11 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import type { Patient, PatientPayload, PatientFormData, } from "../types/patient";
+import type {
+  Patient,
+  PatientPayload,
+  PatientFormData,
+} from "../types/patient";
 
 import {
   emptyPatientForm,
@@ -132,7 +136,7 @@ export default function PatientModal({
                   type="tel"
                   value={form.phone}
                   onChange={(e) =>
-                    changeField("phone", e.target.value.slice(0,13))
+                    changeField("phone", e.target.value.slice(0, 13))
                   }
                   disabled={readOnly || loading}
                   maxLength={13}
@@ -200,7 +204,7 @@ export default function PatientModal({
                   onChange={(e) =>
                     changeField(
                       "emergency_contact_phone",
-                      e.target.value.slice(0,13)
+                      e.target.value.slice(0, 13)
                     )
                   }
                   disabled={readOnly || loading}

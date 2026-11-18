@@ -1,17 +1,40 @@
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, Pencil, Trash2, Search, X } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
-  createPatient,
-  deletePatient,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import {
+  Eye,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+} from "lucide-react";
+
+import toast from "react-hot-toast";
+
+import {
   getPatient,
-  getPatients,
-  updatePatient,
 } from "../services/patientService";
 
+import {
+  usePatientDirectory,
+  useCreatePatient,
+  useUpdatePatient,
+  useDeletePatient,
+  patientKeys,
+} from "../hooks/usePatients";
+
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
+
 import type {
-  PaginatedPatients,
   Patient,
   PatientPayload,
 } from "../types/patient";
@@ -23,30 +46,58 @@ import "../css/PatientsPage.css";
 
 type ModalMode = "create" | "view" | "edit";
 
-const initialData: PaginatedPatients = {
-  current_page: 1,
-  data: [],
-  last_page: 1,
-  per_page: 15,
-  total: 0,
-};
+const PATIENTS_PER_PAGE = 15;
+
+// Tiempo de vigencia de la información individual.
+const PATIENT_DETAIL_STALE_TIME = 1000 * 60 * 2;
+
+// Normalizar texto para ignorar acentos y mayúsculas.
+function normalizeText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
 export default function PatientsPage() {
-  const [result, setResult] =
-    useState<PaginatedPatients>(initialData);
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
+  // =====================================================
+  // CONSULTA DE PACIENTES CON TANSTACK QUERY
+  // =====================================================
+
+  const {
+    data: patients = [],
+    isLoading: loading,
+    isFetching,
+    error: patientsError,
+    refetch,
+  } = usePatientDirectory();
+
+  // =====================================================
+  // MUTACIONES
+  // =====================================================
+
+  const createPatientMutation = useCreatePatient();
+
+  const updatePatientMutation = useUpdatePatient();
+
+  const deletePatientMutation = useDeletePatient();
+
+  // Estados de operaciones.
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
-  // Búsqueda
+  // Búsqueda local.
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Identificador para ignorar respuestas anteriores
-  const searchRequestId = useRef(0);
+  // Paginación local.
+  const [currentPage, setCurrentPage] = useState(1);
 
+  // Control de solicitudes individuales.
+  const patientRequestId = useRef(0);
+
+  // Modales.
   const [modalMode, setModalMode] =
     useState<ModalMode | null>(null);
 
@@ -56,159 +107,244 @@ export default function PatientsPage() {
   const [deleteTarget, setDeleteTarget] =
     useState<Patient | null>(null);
 
-  // Espera 700 ms después de dejar de escribir.
-  // Solo busca cuando existen al menos 2 caracteres.
+  // =====================================================
+  // ERRORES DE CONSULTA
+  // =====================================================
+
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      const search = searchTerm.trim();
+    if (patientsError) {
+      toast.error(
+        patientsError instanceof Error
+          ? patientsError.message
+          : "No se pudieron cargar los pacientes.",
+        { id: "patients-load-error" }
+      );
+    }
+  }, [patientsError]);
 
-      setDebouncedSearch(search.length >= 2 ? search : "");
-    }, 700);
+  // =====================================================
+  // FILTRADO LOCAL
+  // =====================================================
 
-    return () => clearTimeout(timeout);
-  }, [searchTerm]);
+  const filteredPatients = useMemo(() => {
+    const search = normalizeText(searchTerm);
 
-  // Cargar pacientes
-  const loadPatients = useCallback(
-    async (page = 1, search = debouncedSearch) => {
-      const requestId = ++searchRequestId.current;
+    if (!search) {
+      return patients;
+    }
 
-      setLoading(true);
-      setError("");
+    return patients.filter((patient) => {
+      const fullName = normalizeText(
+        `${patient.first_name} ${patient.last_name}`
+      );
 
-      try {
-        const data = await getPatients(page, search);
+      return fullName.includes(search);
+    });
+  }, [patients, searchTerm]);
 
-        // Ignorar respuestas de solicitudes anteriores
-        if (requestId !== searchRequestId.current) return;
+  // =====================================================
+  // PAGINACIÓN LOCAL
+  // =====================================================
 
-        setResult(data);
-      } catch (err) {
-        if (requestId !== searchRequestId.current) return;
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "No se pudieron cargar los pacientes."
-        );
-      } finally {
-        if (requestId === searchRequestId.current) {
-          setLoading(false);
-        }
-      }
-    },
-    [debouncedSearch]
+  const totalPages = Math.max(
+    1,
+    Math.ceil(
+      filteredPatients.length / PATIENTS_PER_PAGE
+    )
   );
 
-  // Consultar cuando cambie la búsqueda confirmada
+  const paginatedPatients = useMemo(() => {
+    const startIndex =
+      (currentPage - 1) * PATIENTS_PER_PAGE;
+
+    return filteredPatients.slice(
+      startIndex,
+      startIndex + PATIENTS_PER_PAGE
+    );
+  }, [filteredPatients, currentPage]);
+
+  // Reiniciar página cuando cambia la búsqueda.
   useEffect(() => {
-    void loadPatients(1, debouncedSearch);
-  }, [debouncedSearch, loadPatients]);
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Evitar permanecer en una página inexistente.
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  // =====================================================
+  // ACTUALIZAR DIRECTORIO MANUALMENTE
+  // =====================================================
+
+  function handleRefresh() {
+    void refetch();
+  }
+
+  // =====================================================
+  // ABRIR MODAL DE REGISTRO
+  // =====================================================
 
   function openCreate() {
+    patientRequestId.current++;
+
     setSelectedPatient(null);
     setModalMode("create");
-    setError("");
   }
+
+  // =====================================================
+  // CONSULTAR PACIENTE INDIVIDUAL CON CACHÉ
+  // =====================================================
 
   async function openPatient(
     patient: Patient,
     mode: "view" | "edit"
   ) {
-    setError("");
-    setSaving(true);
+    const requestId = ++patientRequestId.current;
 
     try {
-      const fullPatient = await getPatient(patient.id);
+      const fullPatient = await queryClient.fetchQuery({
+        queryKey: patientKeys.detail(patient.id),
+
+        queryFn: () => getPatient(patient.id),
+
+        staleTime: PATIENT_DETAIL_STALE_TIME,
+      });
+
+      // Ignorar respuestas de solicitudes anteriores.
+      if (requestId !== patientRequestId.current) {
+        return;
+      }
 
       setSelectedPatient(fullPatient);
       setModalMode(mode);
+
     } catch (err) {
-      setError(
+      if (requestId !== patientRequestId.current) {
+        return;
+      }
+
+      toast.error(
         err instanceof Error
           ? err.message
-          : "No se pudo consultar el paciente."
+          : "No se pudo consultar el paciente.",
+        { id: "patient-detail-error" }
       );
-    } finally {
-      setSaving(false);
     }
   }
 
+  // =====================================================
+  // CERRAR MODAL
+  // =====================================================
+
   function closeModal() {
     if (saving) return;
+
+    patientRequestId.current++;
 
     setModalMode(null);
     setSelectedPatient(null);
   }
 
+  // =====================================================
+  // REGISTRAR O ACTUALIZAR PACIENTE
+  // =====================================================
+
   async function handleSave(payload: PatientPayload) {
+    if (saving) return;
+
     setSaving(true);
-    setError("");
-    setNotice("");
 
     try {
       if (modalMode === "create") {
-        await createPatient(payload);
-        setNotice("Paciente registrado correctamente.");
-      } else if (modalMode === "edit" && selectedPatient) {
-        await updatePatient(selectedPatient.id, payload);
-        setNotice("Paciente actualizado correctamente.");
+        await createPatientMutation.mutateAsync(payload);
+
+        toast.success(
+          "Paciente registrado correctamente."
+        );
+
+        setCurrentPage(1);
+
+      } else if (
+        modalMode === "edit" &&
+        selectedPatient
+      ) {
+        await updatePatientMutation.mutateAsync({
+          id: selectedPatient.id,
+          payload,
+        });
+
+        toast.success(
+          "Paciente actualizado correctamente."
+        );
+
       } else {
         return;
       }
 
-      const page = modalMode === "create"
-        ? 1
-        : result.current_page;
-
       setModalMode(null);
       setSelectedPatient(null);
 
-      await loadPatients(page, debouncedSearch);
+      // No llamamos manualmente a loadPatients.
+      // La mutación invalida la caché desde el hook.
+
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof Error
           ? err.message
-          : "No se pudo guardar el paciente."
+          : "No se pudo guardar el paciente.",
+        { id: "patient-save-error" }
       );
     } finally {
       setSaving(false);
     }
   }
+
+  // =====================================================
+  // ELIMINAR PACIENTE
+  // =====================================================
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || saving) return;
 
     setSaving(true);
-    setError("");
-    setNotice("");
 
     try {
-      await deletePatient(deleteTarget.id);
+      await deletePatientMutation.mutateAsync(
+        deleteTarget.id
+      );
+
+      toast.success(
+        "Paciente eliminado correctamente."
+      );
 
       setDeleteTarget(null);
-      setNotice("Paciente eliminado correctamente.");
 
-      const nextPage =
-        result.data.length === 1 && result.current_page > 1
-          ? result.current_page - 1
-          : result.current_page;
-
-      await loadPatients(nextPage, debouncedSearch);
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof Error
           ? err.message
-          : "No se pudo eliminar el paciente."
+          : "No se pudo eliminar el paciente.",
+        { id: "patient-delete-error" }
       );
     } finally {
       setSaving(false);
     }
   }
+
+  // =====================================================
+  // LIMPIAR BÚSQUEDA
+  // =====================================================
 
   function clearSearch() {
     setSearchTerm("");
   }
+
+  // =====================================================
+  // INTERFAZ
+  // =====================================================
 
   return (
     <main className="patients-page">
@@ -235,41 +371,15 @@ export default function PatientsPage() {
         </button>
       </header>
 
-      {error && (
-        <div className="patients-page__alert patients-page__alert--error">
-          {error}
-
-          <button
-            type="button"
-            onClick={() => setError("")}
-            aria-label="Cerrar mensaje"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      {notice && (
-        <div className="patients-page__alert patients-page__alert--success">
-          {notice}
-
-          <button
-            type="button"
-            onClick={() => setNotice("")}
-            aria-label="Cerrar mensaje"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <section className="patients-page__stats">
         <div className="patients-page__stat">
-          <span className="patients-page__stat-icon">♙</span>
+          <span className="patients-page__stat-icon">
+            ♙
+          </span>
 
           <div>
             <span>Total de pacientes</span>
-            <strong>{result.total}</strong>
+            <strong>{patients.length}</strong>
           </div>
         </div>
       </section>
@@ -284,9 +394,12 @@ export default function PatientsPage() {
             </p>
           </div>
 
-          {/* Buscador de pacientes */}
+          {/* Buscador local */}
           <div className="patients-page__search">
-            <Search size={20} aria-hidden="true" />
+            <Search
+              size={20}
+              aria-hidden="true"
+            />
 
             <input
               type="search"
@@ -310,15 +423,10 @@ export default function PatientsPage() {
           <button
             type="button"
             className="patient-button patient-button--secondary"
-            onClick={() =>
-              void loadPatients(
-                result.current_page,
-                debouncedSearch
-              )
-            }
-            disabled={loading}
+            onClick={handleRefresh}
+            disabled={isFetching}
           >
-            {loading ? "Cargando..." : "Actualizar"}
+            {isFetching ? "Actualizando..." : "Actualizar"}
           </button>
         </div>
 
@@ -339,12 +447,31 @@ export default function PatientsPage() {
                 <tr>
                   <td
                     colSpan={5}
-                    className="patients-page__empty"
+                    className="patients-page__loading"
                   >
-                    Cargando pacientes...
+                    <LoadingScreen />
                   </td>
                 </tr>
-              ) : result.data.length === 0 ? (
+              ) : patientsError ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="patients-page__empty"
+                  >
+                    <strong>
+                      No se pudieron cargar los pacientes.
+                    </strong>
+
+                    <button
+                      type="button"
+                      className="patient-button patient-button--secondary"
+                      onClick={handleRefresh}
+                    >
+                      Reintentar
+                    </button>
+                  </td>
+                </tr>
+              ) : paginatedPatients.length === 0 ? (
                 <tr>
                   <td
                     colSpan={5}
@@ -355,18 +482,18 @@ export default function PatientsPage() {
                     </span>
 
                     <strong>
-                      {debouncedSearch
+                      {searchTerm.trim()
                         ? "No se encontraron pacientes"
                         : "No hay pacientes registrados"}
                     </strong>
 
                     <span>
-                      {debouncedSearch
+                      {searchTerm.trim()
                         ? "Intenta buscar con otro nombre o apellido."
                         : "Registra un paciente para comenzar a llenar el directorio de tu clínica."}
                     </span>
 
-                    {!debouncedSearch && (
+                    {!searchTerm.trim() && (
                       <button
                         type="button"
                         className="patient-button patient-button--primary"
@@ -378,7 +505,7 @@ export default function PatientsPage() {
                   </td>
                 </tr>
               ) : (
-                result.data.map((patient) => (
+                paginatedPatients.map((patient) => (
                   <tr key={patient.id}>
                     <td>
                       <div className="patients-page__person">
@@ -389,7 +516,8 @@ export default function PatientsPage() {
                             .toUpperCase()}
                         </span>
 
-                        {patient.first_name} {patient.last_name}
+                        {patient.first_name}{" "}
+                        {patient.last_name}
                       </div>
                     </td>
 
@@ -427,7 +555,10 @@ export default function PatientsPage() {
                             void openPatient(patient, "view")
                           }
                         >
-                          <Eye size={18} aria-hidden="true" />
+                          <Eye
+                            size={18}
+                            aria-hidden="true"
+                          />
                         </button>
 
                         <button
@@ -439,7 +570,10 @@ export default function PatientsPage() {
                             void openPatient(patient, "edit")
                           }
                         >
-                          <Pencil size={18} aria-hidden="true" />
+                          <Pencil
+                            size={18}
+                            aria-hidden="true"
+                          />
                         </button>
 
                         <button
@@ -447,9 +581,14 @@ export default function PatientsPage() {
                           className="patients-page__delete-action"
                           title="Eliminar paciente"
                           aria-label={`Eliminar ${patient.first_name}`}
-                          onClick={() => setDeleteTarget(patient)}
+                          onClick={() =>
+                            setDeleteTarget(patient)
+                          }
                         >
-                          <Trash2 size={18} aria-hidden="true" />
+                          <Trash2
+                            size={18}
+                            aria-hidden="true"
+                          />
                         </button>
                       </div>
                     </td>
@@ -462,21 +601,20 @@ export default function PatientsPage() {
 
         <footer className="patients-page__pagination">
           <span>
-            Página {result.current_page} de {result.last_page}
+            {searchTerm.trim()
+              ? `${filteredPatients.length} pacientes encontrados`
+              : `${patients.length} pacientes registrados`}
             {" · "}
-            {result.total} pacientes
+            Página {currentPage} de {totalPages}
           </span>
 
           <div>
             <button
               type="button"
               className="patient-button patient-button--secondary"
-              disabled={loading || result.current_page <= 1}
+              disabled={loading || currentPage <= 1}
               onClick={() =>
-                void loadPatients(
-                  result.current_page - 1,
-                  debouncedSearch
-                )
+                setCurrentPage((page) => page - 1)
               }
             >
               Anterior
@@ -486,14 +624,10 @@ export default function PatientsPage() {
               type="button"
               className="patient-button patient-button--secondary"
               disabled={
-                loading ||
-                result.current_page >= result.last_page
+                loading || currentPage >= totalPages
               }
               onClick={() =>
-                void loadPatients(
-                  result.current_page + 1,
-                  debouncedSearch
-                )
+                setCurrentPage((page) => page + 1)
               }
             >
               Siguiente
@@ -517,7 +651,9 @@ export default function PatientsPage() {
           patientName={`${deleteTarget.first_name} ${deleteTarget.last_name}`}
           loading={saving}
           onClose={() => {
-            if (!saving) setDeleteTarget(null);
+            if (!saving) {
+              setDeleteTarget(null);
+            }
           }}
           onConfirm={() => void handleDelete()}
         />

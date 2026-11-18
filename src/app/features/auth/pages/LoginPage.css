@@ -3,7 +3,7 @@
 
 :root {
   font-family: "DM Sans", sans-serif;
-  color: #18343b;
+  color: #172554;
   background: #f1f7f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -31,8 +31,8 @@ input {
   align-items: center;
   padding: 24px;
   background:
-    radial-gradient(circle at 15% 10%, #d9f3ef 0, transparent 35%),
-    radial-gradient(circle at 90% 90%, #dce9fa 0, transparent 30%),
+    radial-gradient(circle at 15% 10%, #18343b 0, transparent 35%),
+    radial-gradient(circle at 90% 90%, #18343b 0, transparent 30%),
     #f6f9fb;
 }
 
@@ -43,7 +43,7 @@ input {
   border: 1px solid #e3ebed;
   border-radius: 20px;
   background: white;
-  box-shadow: 0 20px 70px rgb(25 63 71 / 8%);
+  box-shadow: 0 20px 70px #172554;
 }
 
 .auth-brand {
@@ -62,12 +62,12 @@ input {
   place-items: center;
   border-radius: 13px;
   color: white;
-  background: #087f80;
+  background: #172554;
   font-size: 25px;
 }
 
 .brand-accent {
-  color: #087f80;
+  color: #2563eb;
 }
 
 .auth-heading {
@@ -75,7 +75,7 @@ input {
 }
 
 .auth-eyebrow {
-  color: #087f80;
+  color: #2563eb;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.6px;
@@ -125,7 +125,7 @@ input {
 }
 
 .form-field input:focus {
-  border-color: #087f80;
+  border-color: #2563eb;
   box-shadow: 0 0 0 3px rgb(8 127 128 / 10%);
 }
 
@@ -141,7 +141,7 @@ input {
 }
 
 .password-wrapper:focus-within {
-  border-color: #087f80;
+  border-color: #2563eb;
   box-shadow: 0 0 0 3px rgb(8 127 128 / 10%);
 }
 
@@ -159,7 +159,7 @@ input {
   padding: 10px;
   border: 0;
   background: transparent;
-  color: #087f80;
+  color: #2563eb;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -188,7 +188,7 @@ input {
   border: 0;
   border-radius: 9px;
   color: white;
-  background: #087f80;
+  background: #172554;
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
@@ -196,7 +196,7 @@ input {
 }
 
 .login-button:hover:not(:disabled) {
-  background: #066b6c;
+  background: #2563eb;
 }
 
 .login-button:disabled {

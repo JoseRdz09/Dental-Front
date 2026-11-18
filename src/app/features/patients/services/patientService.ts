@@ -195,3 +195,11 @@ export function preparePatientPayload(
     status: form.status,
   };
 }
+
+
+// Directory busqueda de pacientes local
+export async function getPatientDirectory(): Promise<Patient[]> {
+  const response = await api.get("/api/patients/directory");
+
+  return response.data.data;
+}

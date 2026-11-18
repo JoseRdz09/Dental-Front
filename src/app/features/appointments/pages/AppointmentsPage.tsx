@@ -1,8 +1,10 @@
 
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 import AppointmentCalendar from "../components/AppoinmentCalendar";
 import AppointmentFormModal from "../components/Appointmentformmodal";
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 import type { AppointmentFormValues } from "../types/appointmentForm";
 
@@ -18,6 +20,15 @@ interface ModalState {
   values: AppointmentFormValues;
 }
 
+function getNextAvailableHour(): string {
+  const next = new Date();
+  next.setHours(next.getHours() + 1, 0, 0, 0);
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`;
+}
+
 export default function AppointmentsPage() {
   const {
     appointments,
@@ -31,26 +42,39 @@ export default function AppointmentsPage() {
 
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+
+  const openModal = (newModal: ModalState) => {
+    toast.dismiss();
+    setModal(newModal);
+  };
 
   const closeModal = () => {
     if (!saving) {
       setModal(null);
-      setActionError(null);
     }
   };
 
   const handleSubmit = async (values: AppointmentFormValues) => {
+    if (saving || !modal) return;
+
+    const mode = modal.mode;
+
     setSaving(true);
-    setActionError(null);
 
     try {
       await saveAppointment(values);
+
       setModal(null);
+
+      toast.success(
+        mode === "edit"
+          ? "La cita se actualizó correctamente."
+          : "La cita se registró correctamente.",
+      );
     } catch (err) {
       console.error("Error al guardar la cita:", err);
 
-      setActionError(
+      toast.error(
         err instanceof Error
           ? err.message
           : "No se pudo guardar la cita. Intenta nuevamente.",
@@ -66,35 +90,48 @@ export default function AppointmentsPage() {
     appointmentId: string,
     range: { start: string; end: string },
   ): Promise<boolean> => {
-    setActionError(null);
-
     try {
-      const ok = await moveAppointment(appointmentId, range);
+      const success = await moveAppointment(appointmentId, range);
 
-      if (!ok) {
-        setActionError("No se pudo mover la cita.");
+      if (!success) {
+        toast.error("No se pudo mover la cita.");
       }
 
-      return ok;
+      return success;
     } catch (err) {
       console.error("Error al mover la cita:", err);
-      setActionError("No se pudo mover la cita.");
+
+      toast.error("No se pudo mover la cita.");
+
       return false;
     }
   };
 
+  const handleRetry = async () => {
+    try {
+      await reloadAppointments();
+    } catch (err) {
+      console.error("Error al cargar las citas:", err);
+
+      toast.error(
+        "No se pudieron cargar las citas. Intenta nuevamente.",
+      );
+    }
+  };
+
   if (loading && appointments.length === 0 && !error) {
-    return <p>Cargando citas...</p>;
+    return <LoadingScreen />;
   }
 
   if (error && appointments.length === 0) {
     return (
       <div>
-        <p>{error}</p>
+        <p role="alert">{error}</p>
 
         <button
           type="button"
-          onClick={() => void reloadAppointments()}
+          onClick={() => void handleRetry()}
+          disabled={loading}
         >
           Reintentar
         </button>
@@ -104,28 +141,34 @@ export default function AppointmentsPage() {
 
   return (
     <>
-      {actionError && <p role="alert">{actionError}</p>}
-
       {loading && (
-        <p aria-live="polite">Actualizando...</p>
+        <p role="status" aria-live="polite">
+          Actualizando citas...
+        </p>
       )}
 
       <AppointmentCalendar
         appointments={appointments}
         onSelectAppointment={(appointment) =>
-          setModal({
+          openModal({
             mode: "edit",
             values: appointmentToFormValues(appointment),
           })
         }
         onSlotClick={(dateStr, allDay) =>
-          setModal({
+          openModal({
             mode: "create",
             values: slotToFormValues(dateStr, allDay),
           })
         }
         onMoveAppointment={(appointment, range) =>
           handleMoveAppointment(String(appointment.id), range)
+        }
+        onNewAppointment={() =>
+          openModal({
+            mode: "create",
+            values: slotToFormValues(getNextAvailableHour(), false),
+          })
         }
       />
 

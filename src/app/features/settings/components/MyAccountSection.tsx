@@ -1,16 +1,13 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import axios from "axios";
+import toast from "react-hot-toast";
 
-import {
-  getSettings,
-  updatePassword,
-} from "../services/settingsService";
+import { useSettings } from "../hooks/useSettings";
 
-import type {
-  UserSettings,
-  UpdatePasswordPayload,
-} from "../types/settings";
+import type { UpdatePasswordPayload } from "../types/settings";
+
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -31,68 +28,41 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function MyAccountSection() {
-  const [user, setUser] = useState<UserSettings | null>(null);
+  const {
+    user,
+    loading,
+    error,
+    updatePassword,
+    updatingPassword,
+  } = useSettings();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [loading, setLoading] = useState(true);
-  const [savingPassword, setSavingPassword] = useState(false);
-
-  const [profileError, setProfileError] = useState("");
-  const [passwordMessage, setPasswordMessage] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-
+  // Notificar errores de la consulta.
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadSettings() {
-      try {
-        const response = await getSettings();
-
-        if (!cancelled) {
-          setUser(response.user);
-        }
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setProfileError(getErrorMessage(error));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    if (error) {
+      toast.error(getErrorMessage(error));
     }
-
-    void loadSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [error]);
 
   async function handlePasswordSubmit(
-    event: React.FormEvent<HTMLFormElement>,
+    event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
-    setPasswordMessage("");
-    setPasswordError("");
-
     if (newPassword !== confirmPassword) {
-      setPasswordError("La confirmación de la contraseña no coincide.");
+      toast.error("La confirmación de la contraseña no coincide.");
       return;
     }
 
     if (newPassword === currentPassword) {
-      setPasswordError(
+      toast.error(
         "La nueva contraseña debe ser diferente de la actual.",
       );
       return;
     }
-
-    setSavingPassword(true);
 
     const payload: UpdatePasswordPayload = {
       current_password: currentPassword,
@@ -103,21 +73,28 @@ export default function MyAccountSection() {
     try {
       const response = await updatePassword(payload);
 
-      setPasswordMessage(response.message);
+      toast.success(response.message);
+
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (error: unknown) {
-      setPasswordError(getErrorMessage(error));
-    } finally {
-      setSavingPassword(false);
+      toast.error(getErrorMessage(error));
     }
   }
 
   if (loading) {
     return (
       <div className="settings-card settings-state" role="status">
-        Cargando información de tu cuenta...
+        <LoadingScreen />
+      </div>
+    );
+  }
+
+  if (error && !user) {
+    return (
+      <div className="settings-card settings-state" role="alert">
+        No fue posible cargar la información de tu cuenta.
       </div>
     );
   }
@@ -136,13 +113,7 @@ export default function MyAccountSection() {
           </div>
         </div>
 
-        {profileError && (
-          <p className="settings-alert settings-alert--error" role="alert">
-            {profileError}
-          </p>
-        )}
-
-        {!profileError && user && (
+        {user && (
           <div className="settings-form">
             <div className="settings-field">
               <label htmlFor="settings-name">Nombre completo</label>
@@ -226,25 +197,15 @@ export default function MyAccountSection() {
             />
           </div>
 
-          {passwordError && (
-            <p className="settings-alert settings-alert--error" role="alert">
-              {passwordError}
-            </p>
-          )}
-
-          {passwordMessage && (
-            <p className="settings-alert settings-alert--success" role="status">
-              {passwordMessage}
-            </p>
-          )}
-
           <div className="settings-form__actions">
             <button
               type="submit"
               className="settings-button"
-              disabled={savingPassword}
+              disabled={updatingPassword}
             >
-              {savingPassword ? "Actualizando..." : "Cambiar contraseña"}
+              {updatingPassword
+                ? "Actualizando..."
+                : "Cambiar contraseña"}
             </button>
           </div>
         </form>

@@ -1,5 +1,10 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import type { Appointment } from "../types/appointment";
 import type { AppointmentFormValues } from "../types/appointmentForm";
@@ -20,128 +25,60 @@ interface RequestResult {
   options: ApiAppointmentOptions;
 }
 
+interface MoveAppointmentPayload {
+  id: string;
+  range: {
+    start: string;
+    end: string;
+  };
+}
+
 const EMPTY_OPTIONS: ApiAppointmentOptions = {
   patients: [],
   dentists: [],
   treatments: [],
 };
 
-const pendingRequests = new Map<string, ReturnType<typeof getAppointments>>();
-
-function requestAppointments(
-  clinicId?: number | null,
-  start?: string,
-  end?: string,
-) {
-  const key = `${clinicId ?? ""}|${start ?? ""}|${end ?? ""}`;
-
-  const existingRequest = pendingRequests.get(key);
-
-  if (existingRequest) {
-    return existingRequest;
-  }
-
-  const request = getAppointments(clinicId, start, end);
-
-  pendingRequests.set(key, request);
-
-  void request.finally(() => {
-    if (pendingRequests.get(key) === request) {
-      pendingRequests.delete(key);
-    }
-  }).catch(() => {
-    // El error original se maneja en fetchAppointments.
-  });
-
-  return request;
-}
+export const APPOINTMENTS_QUERY_KEY = ["appointments"] as const;
 
 export function useAppointments(start?: string, end?: string) {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [clinics, setClinics] = useState<ApiClinic[]>([]);
-  const [clinicId, setClinicId] = useState<number | null>(null);
-  const [options, setOptions] =
-    useState<ApiAppointmentOptions>(EMPTY_OPTIONS);
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Clínica seleccionada manualmente.
+  const [selectedClinicId, setSelectedClinicId] =
+    useState<number | null>(null);
 
-  const fetchAppointments = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Consulta de citas y opciones.
+  const appointmentsQuery = useQuery<RequestResult>({
+    queryKey: [
+      ...APPOINTMENTS_QUERY_KEY,
+      selectedClinicId ?? "default",
+      start ?? null,
+      end ?? null,
+    ],
+    queryFn: () => getAppointments(selectedClinicId, start, end),
+    staleTime: 30 * 1000,
+  });
 
-    try {
-      const response: RequestResult = await requestAppointments(
-        clinicId,
-        start,
-        end,
-      );
+  const response = appointmentsQuery.data;
 
-      setClinics(response.clinics);
-      setClinicId(response.selected_clinic_id);
-      setAppointments(response.data);
-      setOptions(response.options ?? EMPTY_OPTIONS);
-    } catch (err) {
-      console.error("Error al cargar las citas:", err);
+  const appointments = response?.data ?? [];
+  const clinics = response?.clinics ?? [];
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudieron cargar las citas.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [clinicId, start, end]);
+  const clinicId =
+    selectedClinicId ?? response?.selected_clinic_id ?? null;
 
-  useEffect(() => {
-    let active = true;
+  const options = response?.options ?? EMPTY_OPTIONS;
 
-    async function load() {
-      setLoading(true);
-      setError(null);
+  // Invalidar las consultas de citas.
+  const invalidateAppointments = () =>
+    queryClient.invalidateQueries({
+      queryKey: APPOINTMENTS_QUERY_KEY,
+    });
 
-      try {
-        const response = await requestAppointments(
-          clinicId,
-          start,
-          end,
-        );
-
-        if (!active) return;
-
-        setClinics(response.clinics);
-        setClinicId(response.selected_clinic_id);
-        setAppointments(response.data);
-        setOptions(response.options ?? EMPTY_OPTIONS);
-      } catch (err) {
-        if (!active) return;
-
-        console.error("Error al cargar las citas:", err);
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "No se pudieron cargar las citas.",
-        );
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    void load();
-
-    return () => {
-      active = false;
-    };
-  }, [start, end, clinicId]);
-
-  const reloadAppointments = useCallback(async () => {
-    await fetchAppointments();
-  }, [fetchAppointments]);
-
-  const saveAppointment = useCallback(
-    async (values: AppointmentFormValues) => {
+  // Crear o actualizar una cita.
+  const saveMutation = useMutation({
+    mutationFn: async (values: AppointmentFormValues) => {
       if (!clinicId) {
         throw new Error("No hay una clínica seleccionada.");
       }
@@ -153,69 +90,98 @@ export function useAppointments(start?: string, end?: string) {
       } else {
         await createAppointment(payload);
       }
-
-      await fetchAppointments();
     },
-    [clinicId, fetchAppointments],
-  );
 
-  const moveAppointment = useCallback(
-    async (
-      id: string,
-      range: { start: string; end: string },
-    ): Promise<boolean> => {
+    onSuccess: invalidateAppointments,
+  });
+
+  // Mover una cita desde el calendario.
+  const moveMutation = useMutation({
+    mutationFn: async ({
+      id,
+      range,
+    }: MoveAppointmentPayload) => {
       if (!clinicId) {
-        return false;
+        throw new Error("No hay una clínica seleccionada.");
       }
 
       const appointment = appointments.find(
         (item) => String(item.id) === id,
       );
 
-      if (!appointment) {
-        return false;
-      }
-
       if (
+        !appointment ||
         appointment.patientId === null ||
         appointment.treatmentId === null
       ) {
-        return false;
+        throw new Error("No se encontró la información de la cita.");
       }
 
-      try {
-        await updateAppointment(id, {
-          clinic_id: clinicId,
-          patient_id: appointment.patientId,
-          dentist_user_id: appointment.dentistUserId,
-          treatment_id: appointment.treatmentId,
-          start_at: range.start,
-          end_at: range.end,
-          status: appointment.status,
-          notes: appointment.details,
-        });
-
-        await fetchAppointments();
-
-        return true;
-      } catch (error) {
-        console.error("Error al actualizar la cita:", error);
-
-        await fetchAppointments();
-
-        return false;
-      }
+      await updateAppointment(id, {
+        clinic_id: clinicId,
+        patient_id: appointment.patientId,
+        dentist_user_id: appointment.dentistUserId,
+        treatment_id: appointment.treatmentId,
+        start_at: range.start,
+        end_at: range.end,
+        status: appointment.status,
+        notes: appointment.details,
+      });
     },
-    [clinicId, appointments, fetchAppointments],
-  );
+
+    onSuccess: invalidateAppointments,
+
+    onError: () => {
+      // Recuperar la información real del calendario.
+      void invalidateAppointments();
+    },
+  });
+
+  // Cambio manual de clínica.
+  const selectClinic = (newClinicId: number) => {
+    if (newClinicId === clinicId) return;
+
+    setSelectedClinicId(newClinicId);
+  };
+
+  // Recargar citas manualmente.
+  const reloadAppointments = async () => {
+    await appointmentsQuery.refetch();
+  };
+
+  // Guardar cita.
+  const saveAppointment = async (values: AppointmentFormValues) => {
+    await saveMutation.mutateAsync(values);
+  };
+
+  // Mover cita.
+  const moveAppointment = async (
+    id: string,
+    range: { start: string; end: string },
+  ): Promise<boolean> => {
+    try {
+      await moveMutation.mutateAsync({ id, range });
+      return true;
+    } catch (error) {
+      console.error("Error al mover la cita:", error);
+      return false;
+    }
+  };
 
   return {
     appointments,
     clinics,
     clinicId,
     options,
-    loading,
-    error,
+
+    loading: appointmentsQuery.isLoading,
+    error: appointmentsQuery.error
+      ? appointmentsQuery.error instanceof Error
+        ? appointmentsQuery.error.message
+        : "No se pudieron cargar las citas."
+      : null,
+
+    selectClinic,
     reloadAppointments,
     saveAppointment,
     moveAppointment,
