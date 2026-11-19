@@ -1,3 +1,4 @@
+
 export type OrganizationRole = "owner";
 
 export type ClinicRole = "clinic_admin";
@@ -7,12 +8,14 @@ export type UserRole = OrganizationRole | ClinicRole;
 export interface Organization {
   id: number;
   name: string;
+  logo: string | null;
   role: OrganizationRole;
 }
 
 export interface Clinic {
   id: number;
   name: string;
+  logo: string | null;
   role: ClinicRole;
 }
 

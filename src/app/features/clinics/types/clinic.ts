@@ -1,6 +1,7 @@
 
 export interface Clinic {
   id: number;
+  logo_url: string | null;
   name: string;
   email: string | null;
   phone: string | null;

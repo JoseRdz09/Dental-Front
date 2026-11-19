@@ -1,22 +1,20 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-
+import ProtectedRoute from "../components/ProtectedRoute.tsx";
 import { AuthProvider } from "../app/features/auth/AuthContext.tsx";
-import LoginPage from "../app/features/auth/pages/LoginPage.tsx";
 
+import LoginPage from "../app/features/auth/pages/LoginPage.tsx";
 import DashboardPage from "../app/features/dashboard/DashboardPage.tsx";
 import OwnerDashboard from "./features/dashboard-owner/pages/Dashboard-Owner.tsx";
-
 import AdminLayout from "../app/layouts/AdminLayout.tsx";
 import OwnerLayout from "./layouts/OwnerLayout.tsx";
-
 import PatientsPage from "../app/features/patients/page/PatientsPage.tsx";
 import SettingsPage from "../app/features/settings/pages/SettingsPage.tsx";
-
 import ClinicsPage from "./features/clinics/pages/ClinicsPage.tsx";
 import Clinicalteam from "./features/clinical-team/pages/ClinicalteamPage.tsx";
 import Billing from "./features/Billing/pages/Billing.tsx";
+import TreatmentsPage from "./features/treatments/pages/TreatmentsPage.tsx";
 
-import ProtectedRoute from "../components/ProtectedRoute.tsx";
+
 
 export default function AppRouter() {
   return (
@@ -35,7 +33,8 @@ export default function AppRouter() {
             <Route path="/clinics" element={<ClinicsPage />} />
             <Route path="/team" element={<Clinicalteam />} />
             <Route path="/billing" element={<Billing />} />
-            <Route path="/owner-settings" element={""} />
+            <Route path="/treatments" element={<TreatmentsPage />} />
+            <Route path="/owner-settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

@@ -152,17 +152,6 @@ export default function ClinicTeamTable({
       <header className="clinic-team__header">
         <div>
           <h2>Equipo clínico</h2>
-
-          <p>
-            Administra y consulta a los profesionales que pertenecen
-            a la clínica.
-          </p>
-
-          {clinicId !== null && !loading && !error && (
-            <p className="clinic-team__count">
-              {total} {total === 1 ? "integrante" : "integrantes"}
-            </p>
-          )}
         </div>
       </header>
 

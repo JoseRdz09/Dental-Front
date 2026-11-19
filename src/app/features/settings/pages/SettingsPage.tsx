@@ -1,12 +1,27 @@
+
 import { useState } from "react";
+
 import MyAccountSection from "../components/MyAccountSection";
-import SubscriptionSection from "../components/SubscriptionSection";
+import OrganizationSection from "../components/OrganizationSection";
+
+
 import "../css/SettingsPage.css";
 
-type SettingsTab = "account" | "subscription";
+import { useAuth } from "../../auth/useAuth";
+
+type SettingsTab = "account" | "organization" | "subscription";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
+
+  const { user } = useAuth();
+
+  // Identificar si el usuario es propietario de alguna organización.
+  const organization = user?.organizations?.find(
+    (organization) => organization.role === "owner"
+  );
+
+  const isOwner = Boolean(organization);
 
   return (
     <main className="settings-page">
@@ -14,7 +29,7 @@ export default function SettingsPage() {
         <div>
           <span className="settings-page__eyebrow">PREFERENCIAS</span>
           <h1>Configuración</h1>
-          <p>Administra tu cuenta y consulta tu suscripción.</p>
+          <p>Administra tu cuenta y tu organización.</p>
         </div>
       </header>
 
@@ -23,6 +38,7 @@ export default function SettingsPage() {
         role="tablist"
         aria-label="Configuración"
       >
+        {/* MI CUENTA */}
         <button
           type="button"
           role="tab"
@@ -41,38 +57,47 @@ export default function SettingsPage() {
               <path d="M4 21a8 8 0 0 1 16 0" />
             </svg>
           </span>
+
           <span>
             <strong>Mi cuenta</strong>
             <small>Perfil y seguridad</small>
           </span>
         </button>
 
-        <button
-          type="button"
-          role="tab"
-          id="tab-subscription"
-          aria-selected={activeTab === "subscription"}
-          aria-controls="panel-subscription"
-          tabIndex={activeTab === "subscription" ? 0 : -1}
-          className={`settings-tabs__item ${
-            activeTab === "subscription" ? "is-active" : ""
-          }`}
-          onClick={() => setActiveTab("subscription")}
-        >
-          <span className="settings-tabs__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="5" width="18" height="14" rx="3" />
-              <path d="M3 10h18M7 15h4" />
-            </svg>
-          </span>
-          <span>
-            <strong>Suscripción</strong>
-            <small>Plan y facturación</small>
-          </span>
-        </button>
+        {/* PESTAÑAS EXCLUSIVAS DEL OWNER */}
+        {isOwner && (
+          <>
+            {/* ORGANIZACIÓN */}
+            <button
+              type="button"
+              role="tab"
+              id="tab-organization"
+              aria-selected={activeTab === "organization"}
+              aria-controls="panel-organization"
+              tabIndex={activeTab === "organization" ? 0 : -1}
+              className={`settings-tabs__item ${
+                activeTab === "organization" ? "is-active" : ""
+              }`}
+              onClick={() => setActiveTab("organization")}
+            >
+              <span className="settings-tabs__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M3 21h18M5 21V7l7-4 7 4v14" />
+                  <path d="M9 21v-6h6v6M9 9h.01M15 9h.01" />
+                </svg>
+              </span>
+
+              <span>
+                <strong>Organización</strong>
+                <small>Información y logotipo</small>
+              </span>
+            </button>
+          </>
+        )}
       </div>
 
       <section className="settings-page__content">
+        {/* MI CUENTA */}
         <div
           role="tabpanel"
           id="panel-account"
@@ -82,14 +107,21 @@ export default function SettingsPage() {
           <MyAccountSection />
         </div>
 
-        <div
-          role="tabpanel"
-          id="panel-subscription"
-          aria-labelledby="tab-subscription"
-          hidden={activeTab !== "subscription"}
-        >
-          <SubscriptionSection />
-        </div>
+        {/* ORGANIZACIÓN */}
+        {isOwner && (
+          <div
+            role="tabpanel"
+            id="panel-organization"
+            aria-labelledby="tab-organization"
+            hidden={activeTab !== "organization"}
+          >
+            <OrganizationSection
+              organizationId={organization!.id}
+              organizationName={organization!.name}
+              logoUrl={organization!.logo}
+            />
+          </div>
+        )}
       </section>
     </main>
   );

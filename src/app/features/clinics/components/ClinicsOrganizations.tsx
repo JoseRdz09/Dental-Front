@@ -1,14 +1,21 @@
 
 import { useState } from "react";
-import { useClinic } from "../hooks/useClinic";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { useClinic, MY_CLINICS_QUERY_KEY } from "../hooks/useClinic";
+
 import "../css/ClinicsOrganizations.css";
+
 import EditClinicModal from "../components/EditClinicModal";
 import CreateClinicModal from "../components/CreateClinicModal";
+
 import type { Clinic } from "../types/clinic";
 
 export default function ClinicsOrganizations() {
+  const queryClient = useQueryClient();
+
   const {
-    clinics: loadedClinics,
+    clinics,
     loading,
     error,
   } = useClinic();
@@ -16,47 +23,62 @@ export default function ClinicsOrganizations() {
   const [editingClinic, setEditingClinic] =
     useState<Clinic | null>(null);
 
-  const [creatingClinic, setCreatingClinic] = useState(false);
+  const [creatingClinic, setCreatingClinic] =
+    useState(false);
 
-  const [updatedClinics, setUpdatedClinics] =
-    useState<Record<number, Clinic>>({});
+  // Actualizar la caché cuando se crea una clínica.
+  const handleClinicCreated = (createdClinic: Clinic) => {
+    queryClient.setQueryData<Clinic[]>(
+      MY_CLINICS_QUERY_KEY,
+      (previous = []) => {
+        const exists = previous.some(
+          (clinic) => clinic.id === createdClinic.id
+        );
 
-  const [newClinics, setNewClinics] = useState<Clinic[]>([]);
+        if (exists) {
+          return previous.map((clinic) =>
+            clinic.id === createdClinic.id
+              ? createdClinic
+              : clinic
+          );
+        }
 
-  // IDs de clínicas eliminadas durante esta sesión.
-  const [deletedClinicIds, setDeletedClinicIds] =
-    useState<Set<number>>(() => new Set());
-
-  // 1. Combinar las clínicas originales con las actualizaciones.
-  const clinicsMap = new Map<number, Clinic>();
-
-  loadedClinics.forEach((clinic) => {
-    if (deletedClinicIds.has(Number(clinic.id))) {
-      return;
-    }
-
-    clinicsMap.set(
-      clinic.id,
-      updatedClinics[clinic.id] ?? clinic
+        return [...previous, createdClinic];
+      }
     );
-  });
 
-  // 2. Agregar clínicas creadas localmente sin duplicar IDs.
-  newClinics.forEach((clinic) => {
-    if (deletedClinicIds.has(Number(clinic.id))) {
-      return;
-    }
+    setCreatingClinic(false);
+  };
 
-    if (!clinicsMap.has(clinic.id)) {
-      clinicsMap.set(
-        clinic.id,
-        updatedClinics[clinic.id] ?? clinic
-      );
-    }
-  });
+  // Actualizar la caché cuando se edita una clínica.
+  const handleClinicUpdated = (updatedClinic: Clinic) => {
+    queryClient.setQueryData<Clinic[]>(
+      MY_CLINICS_QUERY_KEY,
+      (previous = []) =>
+        previous.map((clinic) =>
+          clinic.id === updatedClinic.id
+            ? updatedClinic
+            : clinic
+        )
+    );
 
-  // 3. Obtener el listado final sin IDs duplicados.
-  const clinics = Array.from(clinicsMap.values());
+    setEditingClinic(null);
+  };
+
+  // Actualizar la caché cuando se elimina una clínica.
+  const handleClinicDeleted = (clinicId: number) => {
+    const id = Number(clinicId);
+
+    queryClient.setQueryData<Clinic[]>(
+      MY_CLINICS_QUERY_KEY,
+      (previous = []) =>
+        previous.filter(
+          (clinic) => Number(clinic.id) !== id
+        )
+    );
+
+    setEditingClinic(null);
+  };
 
   return (
     <section className="clinics-organizations">
@@ -96,28 +118,36 @@ export default function ClinicsOrganizations() {
             >
               <div className="clinic-card-heading">
                 <span className="clinic-card-icon">
-                  <svg
-                    width="28"
-                    height="28"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M3 21h18" />
-                    <path d="M5 21V7l8-4v18" />
-                    <path d="M19 21V11l-6-4" />
-                    <path d="M9 9v.01" />
-                    <path d="M9 12v.01" />
-                    <path d="M9 15v.01" />
-                    <path d="M9 18v.01" />
-                    <path d="M16 13v.01" />
-                    <path d="M16 16v.01" />
-                    <path d="M16 19v.01" />
-                  </svg>
+                  {clinic.logo_url ? (
+                    <img
+                      src={clinic.logo_url}
+                      alt={`Logo de ${clinic.name}`}
+                      className="clinic-card-logo"
+                    />
+                  ) : (
+                    <svg
+                      width="28"
+                      height="28"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 21h18" />
+                      <path d="M5 21V7l8-4v18" />
+                      <path d="M19 21V11l-6-4" />
+                      <path d="M9 9v.01" />
+                      <path d="M9 12v.01" />
+                      <path d="M9 15v.01" />
+                      <path d="M9 18v.01" />
+                      <path d="M16 13v.01" />
+                      <path d="M16 16v.01" />
+                      <path d="M16 19v.01" />
+                    </svg>
+                  )}
                 </span>
 
                 <div className="clinic-card-title">
@@ -191,68 +221,22 @@ export default function ClinicsOrganizations() {
         </div>
       )}
 
+      {/* Modal para crear una clínica */}
       {creatingClinic && (
         <CreateClinicModal
           onClose={() => setCreatingClinic(false)}
-          onSaved={(createdClinic) => {
-            // Si el backend reutiliza un ID, permitir mostrarlo
-            // solo cuando realmente se haya creado correctamente.
-            setDeletedClinicIds((previous) => {
-              const updated = new Set(previous);
-              updated.delete(Number(createdClinic.id));
-              return updated;
-            });
-
-            setNewClinics((previous) => [
-              ...previous.filter(
-                (clinic) => clinic.id !== createdClinic.id
-              ),
-              createdClinic,
-            ]);
-
-            setCreatingClinic(false);
-          }}
+          onSaved={handleClinicCreated}
         />
       )}
 
+      {/* Modal para editar o eliminar una clínica */}
       {editingClinic && (
         <EditClinicModal
           key={editingClinic.id}
           clinic={editingClinic}
           onClose={() => setEditingClinic(null)}
-          onSaved={(updatedClinic) => {
-            setUpdatedClinics((previous) => ({
-              ...previous,
-              [updatedClinic.id]: updatedClinic,
-            }));
-
-            setEditingClinic(null);
-          }}
-          onDeleted={(clinicId) => {
-            const id = Number(clinicId);
-
-            // Ocultar inmediatamente la clínica del listado.
-            setDeletedClinicIds((previous) => {
-              const updated = new Set(previous);
-              updated.add(id);
-              return updated;
-            });
-
-            // Limpiar los datos locales de esa clínica.
-            setUpdatedClinics((previous) => {
-              const updated = { ...previous };
-              delete updated[id];
-              return updated;
-            });
-
-            setNewClinics((previous) =>
-              previous.filter(
-                (clinic) => Number(clinic.id) !== id
-              )
-            );
-
-            setEditingClinic(null);
-          }}
+          onSaved={handleClinicUpdated}
+          onDeleted={handleClinicDeleted}
         />
       )}
     </section>

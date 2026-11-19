@@ -92,17 +92,28 @@
 }
 
 .clinic-card-icon {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
-  color: #2563eb;
+  overflow: hidden;
+  border-radius: 14px;
   background: #eff6ff;
-  border-radius: 12px;
+  color: #2563eb;
 }
 
+
+.clinic-card-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+}
 .clinic-card-title {
   flex: 1;
   min-width: 0;

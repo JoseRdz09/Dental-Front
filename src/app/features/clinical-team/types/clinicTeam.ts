@@ -16,9 +16,21 @@ export interface ClinicTeamMember {
 }
 
 export interface ClinicTeamResponse {
-  clinic_id: number;
-  total: number;
-  data: ClinicTeamMember[];
+  clinic: {
+    id: number;
+    name: string;
+    logo_url: string | null;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    status: string;
+    timezone: string;
+    organization_id: number;
+  };
+  team: {
+    total: number;
+    data: ClinicTeamMember[];
+  };
 }
 
 export interface CreateClinicTeamMemberPayload {

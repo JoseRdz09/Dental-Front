@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Clinic } from "../types/clinic";
 import toast from "react-hot-toast";
@@ -10,6 +10,7 @@ import {
   type UpdateClinicData,
 } from "../services/clinicService";
 import DeleteClinicModal from "./DeleteClinicModal";
+import { Upload, X } from "lucide-react";
 import "../css/EditClinicModal.css";
 
 interface Props {
@@ -34,6 +35,11 @@ export default function EditClinicModal({
     timezone: clinic.timezone ?? "America/Mexico_City",
   }));
 
+  const [selectedLogo, setSelectedLogo] = useState<File | null>(null);
+
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -50,6 +56,44 @@ export default function EditClinicModal({
     }));
   }
 
+  function handleLogoChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Selecciona una imagen JPG, PNG o WEBP.");
+      event.target.value = "";
+      return;
+    }
+
+    const maxSize = 2 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      toast.error("El logotipo no debe superar los 2 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedLogo(file);
+  }
+
+  function removeSelectedLogo() {
+    setSelectedLogo(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -62,7 +106,10 @@ export default function EditClinicModal({
     const toastId = toast.loading("Actualizando clínica...");
 
     try {
-      const updatedClinic = await updateClinic(clinic.id, form);
+      const updatedClinic = await updateClinic(clinic.id, {
+        ...form,
+        logo_file: selectedLogo,
+      });
 
       toast.success("Clínica actualizada correctamente.", {
         id: toastId,
@@ -191,6 +238,63 @@ export default function EditClinicModal({
 
           <form onSubmit={handleSubmit}>
             <div className="clinic-modal-fields">
+
+              {/* LOGOTIPO */}
+              <div className="clinic-logo-section">
+                <div className="clinic-logo-info">
+                  <div className="clinic-logo-heading">
+                    <div className="clinic-logo-title">
+                      <strong>Logotipo de la clínica</strong>
+                      <span>Identifica visualmente tu clínica.</span>
+                    </div>
+
+                    <span className="clinic-logo-format">
+                      JPG · PNG · WEBP
+                    </span>
+                  </div>
+
+                  <div className="clinic-logo-actions">
+                    <button
+                      type="button"
+                      className="clinic-logo-upload"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={busy}
+                    >
+                      <Upload size={17} strokeWidth={2} />
+                      {selectedLogo ? "Cambiar imagen" : "Subir logotipo"}
+                    </button>
+
+                    {selectedLogo && (
+                      <button
+                        type="button"
+                        className="clinic-logo-remove"
+                        onClick={removeSelectedLogo}
+                        disabled={busy}
+                        aria-label="Cancelar imagen seleccionada"
+                        title="Cancelar imagen seleccionada"
+                      >
+                        <X size={17} />
+                      </button>
+                    )}
+                  </div>
+
+                  <span className="clinic-logo-hint">
+                    <span className="clinic-logo-hint-dot" />
+                    Formatos JPG, PNG o WEBP. Tamaño máximo de 2 MB.
+                  </span>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleLogoChange}
+                    hidden
+                    disabled={busy}
+                  />
+                </div>
+
+              </div>
+
               <label>
                 Nombre de la clínica *
                 <input

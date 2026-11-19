@@ -1,0 +1,105 @@
+
+/* ==========================================
+   VARIABLES
+========================================== */
+
+.treatments-page {
+  --page-primary: #172554;
+  --page-border: #4776e6;
+  --page-hover: #2563eb;
+  --page-text: #172033;
+  --page-muted: #64748b;
+
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  color: var(--page-text);
+}
+
+/* ==========================================
+   CLINIC SELECTOR
+========================================== */
+
+.treatments-page__selector {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.treatments-page__label {
+  color: var(--page-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.treatments-page__select {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid rgba(71, 118, 230, 0.35);
+  border-radius: 10px;
+  background-color: #fff;
+  color: var(--page-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.treatments-page__select:hover {
+  border-color: var(--page-border);
+}
+
+.treatments-page__select:focus {
+  border-color: var(--page-hover);
+  box-shadow: 0 0 0 3px rgba(71, 118, 230, 0.12);
+}
+
+/* ==========================================
+   CONTENT
+========================================== */
+
+.treatments-page__content {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ==========================================
+   LOADING / EMPTY STATES
+========================================== */
+
+.treatments-page__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 30px 20px;
+  color: var(--page-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.treatments-page__state--empty {
+  border: 1px dashed rgba(71, 118, 230, 0.3);
+  border-radius: 14px;
+  background: #f8faff;
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 640px) {
+  .treatments-page {
+    gap: 20px;
+  }
+
+  .treatments-page__selector {
+    max-width: 100%;
+  }
+}

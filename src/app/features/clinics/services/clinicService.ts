@@ -6,29 +6,19 @@ interface MyClinicsResponse {
   data: Clinic[];
 }
 
-// Evita duplicar la petición mientras está en curso.
-let clinicsRequest: Promise<Clinic[]> | null = null;
+export async function getMyClinics(): Promise<Clinic[]> {
+  const response = await api.get<Clinic[] | MyClinicsResponse>(
+    "/api/my-clinics"
+  );
 
-export function getMyClinics(): Promise<Clinic[]> {
-  if (!clinicsRequest) {
-    clinicsRequest = api
-      .get<Clinic[] | MyClinicsResponse>("/api/my-clinics")
-      .then((response) => {
-        const result = response.data;
+  const result = response.data;
 
-        return Array.isArray(result) ? result : result.data;
-      })
-      .finally(() => {
-        clinicsRequest = null;
-      });
-  }
-  
-
-  return clinicsRequest;
+  return Array.isArray(result) ? result : result.data;
 }
 
 export interface UpdateClinicData {
   name: string;
+  logo_file?: File | null;
   email: string;
   phone: string;
   address: string;
@@ -38,15 +28,32 @@ export interface UpdateClinicData {
 
 export async function updateClinic(
   clinicId: number,
-  values: UpdateClinicData,
+  values: UpdateClinicData
 ): Promise<Clinic> {
-  const response = await api.put<{ data: Clinic }>(
+  const formData = new FormData();
+
+  formData.append("name", values.name);
+  formData.append("email", values.email);
+  formData.append("phone", values.phone);
+  formData.append("address", values.address);
+  formData.append("status", values.status);
+  formData.append("timezone", values.timezone);
+
+  if (values.logo_file instanceof File) {
+    formData.append("logo_file", values.logo_file);
+  }
+
+  // Simular PUT para que Laravel procese correctamente el archivo.
+  formData.append("_method", "PUT");
+
+  const response = await api.post<{ data: Clinic }>(
     `/api/my-clinics/${clinicId}`,
-    values,
+    formData
   );
 
   return response.data.data;
 }
+
 
 export async function deleteClinic(
   clinicId: number

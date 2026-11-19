@@ -1,95 +1,87 @@
 
 import { useCallback, useEffect, useState } from "react";
-import { getClinicTeam } from "../services/clinicTeamServices";
-import type { ClinicTeamMember } from "../types/clinicTeam";
+import {
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-export function useClinicTeam(clinicId: number | null) {
-  const [members, setMembers] = useState<ClinicTeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [loadedClinicId, setLoadedClinicId] = useState<number | null>(
-    null
-  );
+import { getClinicsWithTeam } from "../services/clinicTeamServices";
 
-  const reload = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    setReloadKey((previous) => previous + 1);
-  }, []);
+const CLINIC_TEAM_QUERY_KEY = ["clinic-team"] as const;
 
+export function useClinicTeam() {
+  const queryClient = useQueryClient();
+
+  // Obtener todas las clínicas y sus integrantes en una petición.
+  const {
+    data: clinics = [],
+    isLoading: clinicsLoading,
+    error,
+  } = useQuery({
+    queryKey: CLINIC_TEAM_QUERY_KEY,
+    queryFn: getClinicsWithTeam,
+    staleTime: Infinity,
+    retry: 1,
+  });
+
+  // Clínica seleccionada.
+  const [clinicId, setClinicId] = useState<number | null>(null);
+
+  // Seleccionar la primera clínica disponible.
+  // Conservar la selección mientras siga existiendo.
   useEffect(() => {
-    let cancelled = false;
+    if (clinicsLoading) return;
 
-    async function fetchTeam() {
-      if (clinicId === null || clinicId <= 0) {
-        setMembers([]);
-        setError("Selecciona una clínica para consultar su equipo.");
-        setLoadedClinicId(null);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await getClinicTeam(clinicId);
-
-        if (cancelled) return;
-
-        setMembers(response.data);
-      } catch (err: unknown) {
-        if (cancelled) return;
-
-        // No borramos los integrantes anteriores.
-        // Mostramos el error por separado.
-        const responseMessage =
-          typeof err === "object" &&
-          err !== null &&
-          "response" in err &&
-          typeof err.response === "object" &&
-          err.response !== null &&
-          "data" in err.response &&
-          typeof err.response.data === "object" &&
-          err.response.data !== null &&
-          "message" in err.response.data &&
-          typeof err.response.data.message === "string"
-            ? err.response.data.message
-            : null;
-
-        setError(
-          responseMessage ??
-            "No fue posible cargar el equipo clínico."
-        );
-      } finally {
-        if (!cancelled) {
-          setLoadedClinicId(clinicId);
-          setLoading(false);
-        }
-      }
+    if (clinics.length === 0) {
+      setClinicId(null);
+      return;
     }
 
-    void fetchTeam();
+    setClinicId((currentId) => {
+      const clinicExists = clinics.some(
+        (clinic) => clinic.id === currentId
+      );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [clinicId, reloadKey]);
+      return clinicExists
+        ? currentId
+        : clinics[0].id;
+    });
+  }, [clinics, clinicsLoading]);
 
-  // Evita mostrar una lista vacía durante el primer render
-  // cuando cambia la clínica seleccionada.
-  const isLoading =
-    loading ||
-    (clinicId !== null &&
-      clinicId > 0 &&
-      loadedClinicId !== clinicId);
+  // Obtener la clínica seleccionada desde los datos almacenados.
+  const clinic =
+    clinics.find((item) => item.id === clinicId) ?? null;
+
+  // Obtener integrantes sin realizar otra petición.
+  const members = clinic?.team?.data ?? [];
+  const total = clinic?.team?.total ?? 0;
+
+  // Recargar todas las clínicas y sus integrantes.
+  const reload = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: CLINIC_TEAM_QUERY_KEY,
+      exact: true,
+    });
+  }, [queryClient]);
 
   return {
+    clinics,
+    clinic,
+    clinicId,
+    setClinicId,
+
     members,
-    total: members.length,
-    loading: isLoading,
-    error,
+    total,
+
+    clinicsLoading,
+    loading: clinicsLoading,
+
+    error: error instanceof Error
+      ? error.message
+      : error
+        ? "No se pudieron cargar las clínicas."
+        : null,
+
     reload,
   };
 }

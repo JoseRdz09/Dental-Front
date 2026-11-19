@@ -1,10 +1,12 @@
 
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+
 import {
   Activity,
   CalendarDays,
   Users,
+  Pill,
   Settings,
   LogOut,
   Menu,
@@ -20,12 +22,15 @@ type UserRole = "owner" | "admin";
 
 interface SidebarProps {
   role: UserRole;
+  name?: string;
+  logo?: string | null;
 }
 
 const ownerMenuItems = [
   { label: "Inicio", path: "/owner-dashboard", icon: LayoutDashboard },
   { label: "Clínicas", path: "/clinics", icon: Building2 },
   { label: "Equipo Clínico", path: "/team", icon: Users },
+  { label: "Tratamientos", path: "/treatments", icon: Pill },
   { label: "Facturación", path: "/billing", icon: CreditCard },
   { label: "Configuración", path: "/owner-settings", icon: Settings },
 ];
@@ -33,14 +38,19 @@ const ownerMenuItems = [
 const adminMenuItems = [
   { label: "Calendario", path: "/dashboard", icon: CalendarDays },
   { label: "Lista de pacientes", path: "/patients", icon: Users },
-  { label: "Ajustes", path: "/settings", icon: Settings },
+  { label: "Configuración", path: "/settings", icon: Settings },
 ];
 
 const MOBILE_BREAKPOINT = 768;
 
-export default function Sidebar({ role }: SidebarProps) {
+export default function Sidebar({
+  role,
+  name,
+  logo,
+}: SidebarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -48,14 +58,14 @@ export default function Sidebar({ role }: SidebarProps) {
       `(max-width: ${MOBILE_BREAKPOINT}px)`
     );
 
-    const handleScreenChange = (event: MediaQueryList | MediaQueryListEvent) => {
+    const handleScreenChange = (
+      event: MediaQueryList | MediaQueryListEvent
+    ) => {
       setCollapsed(event.matches);
     };
 
-    // Detectar el tamaño inicial de la pantalla.
     handleScreenChange(mediaQuery);
 
-    // Detectar cuando la ventana cambia de tamaño.
     mediaQuery.addEventListener("change", handleScreenChange);
 
     return () => {
@@ -63,7 +73,16 @@ export default function Sidebar({ role }: SidebarProps) {
     };
   }, []);
 
-  const menuItems = role === "owner" ? ownerMenuItems : adminMenuItems;
+  const isOwner = role === "owner";
+
+  const menuItems = isOwner ? ownerMenuItems : adminMenuItems;
+
+  const displayName =
+    name || (isOwner ? "Mi organización" : "Mi clínica");
+
+  const subtitle = isOwner
+    ? "Panel de organización"
+    : "Panel de clínica";
 
   const handleLogout = async () => {
     try {
@@ -76,40 +95,60 @@ export default function Sidebar({ role }: SidebarProps) {
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+
+      {/* Identidad de organización o clínica */}
       <div className="sidebar-brand">
+
         <div className="sidebar-logo">
-          <Activity size={24} />
+          {logo ? (
+            <img
+              src={logo}
+              alt={`Logo de ${displayName}`}
+              className="sidebar-logo-image"
+            />
+          ) : (
+            <Activity size={24} />
+          )}
         </div>
 
         <div className="sidebar-brand-text">
-          <h2>Dental SaaS</h2>
-          <span>
-            {role === "owner"
-              ? "Panel del propietario"
-              : "Panel de clínica"}
-          </span>
+          <h2>{displayName}</h2>
+          <span>{subtitle}</span>
         </div>
+
       </div>
 
+      {/* Contraer menú */}
       <button
         type="button"
         className="sidebar-toggle"
         onClick={() => setCollapsed((prev) => !prev)}
-        aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
-        title={collapsed ? "Expandir menú" : "Contraer menú"}
+        aria-label={
+          collapsed ? "Expandir menú" : "Contraer menú"
+        }
+        title={
+          collapsed ? "Expandir menú" : "Contraer menú"
+        }
       >
-        {collapsed ? <Menu size={22} /> : <ChevronLeft size={22} />}
+        {collapsed ? (
+          <Menu size={22} />
+        ) : (
+          <ChevronLeft size={22} />
+        )}
+
         <span>{collapsed ? "" : "Contraer menú"}</span>
       </button>
 
-      <p className="sidebar-section-title">MENÚ PRINCIPAL</p>
+      <p className="sidebar-section-title">
+        MENÚ PRINCIPAL
+      </p>
 
+      {/* Navegación */}
       <nav className="sidebar-nav">
         {menuItems.map(({ label, path, icon: Icon }) => (
           <NavLink
             key={path}
             to={path}
-            end={path === "/admin" || path === "/owner"}
             title={collapsed ? label : undefined}
             className={({ isActive }) =>
               `sidebar-link ${isActive ? "active" : ""}`
@@ -121,6 +160,7 @@ export default function Sidebar({ role }: SidebarProps) {
         ))}
       </nav>
 
+      {/* Cerrar sesión */}
       <div className="sidebar-bottom">
         <button
           type="button"
@@ -132,6 +172,7 @@ export default function Sidebar({ role }: SidebarProps) {
           <span>Cerrar sesión</span>
         </button>
       </div>
+
     </aside>
   );
 }

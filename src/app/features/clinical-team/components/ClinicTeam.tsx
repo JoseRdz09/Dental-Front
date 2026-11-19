@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import {
   Building2,
@@ -7,7 +8,6 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { useClinic } from "../../clinics/hooks/useClinic";
 import { useClinicTeam } from "../hooks/useClinicTeam";
 import { deleteClinicTeamMember } from "../services/clinicTeamServices";
 
@@ -23,20 +23,19 @@ import "../css/Clinicteam.css";
 export default function ClinicTeam() {
   const {
     clinics,
+    clinic,
     clinicId,
     setClinicId,
-    loading: clinicsLoading,
-  } = useClinic();
-
-  const {
     members,
     total,
+    clinicsLoading,
     loading: teamLoading,
     error,
     reload,
-  } = useClinicTeam(clinicId);
+  } = useClinicTeam();
 
   const [isOpen, setIsOpen] = useState(false);
+
   const [isCreateModalOpen, setIsCreateModalOpen] =
     useState(false);
 
@@ -50,14 +49,14 @@ export default function ClinicTeam() {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const selectedClinic = clinics.find(
-    (clinic) => clinic.id === clinicId
-  );
+  const selectedClinic = clinic;
 
+  // Seleccionar integrante para eliminar.
   const handleDelete = (member: ClinicTeamMember) => {
     setDeletingMember(member);
   };
 
+  // Confirmar eliminación de integrante.
   const handleConfirmDelete = async () => {
     if (
       !deletingMember ||
@@ -71,11 +70,13 @@ export default function ClinicTeam() {
 
     try {
       await deleteClinicTeamMember(
-        clinicId,
+        
         deletingMember.user_id
       );
 
-      toast.success("Integrante eliminado de la clínica.");
+      toast.success(
+        "Integrante eliminado correctamente."
+      );
 
       setDeletingMember(null);
 
@@ -94,6 +95,7 @@ export default function ClinicTeam() {
     }
   };
 
+  // Cerrar selector al hacer clic fuera.
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -114,6 +116,7 @@ export default function ClinicTeam() {
       "mousedown",
       handleClickOutside
     );
+
     document.addEventListener(
       "keydown",
       handleEscape
@@ -124,6 +127,7 @@ export default function ClinicTeam() {
         "mousedown",
         handleClickOutside
       );
+
       document.removeEventListener(
         "keydown",
         handleEscape
@@ -131,6 +135,7 @@ export default function ClinicTeam() {
     };
   }, []);
 
+  // Estado de carga de autenticación.
   if (clinicsLoading) {
     return (
       <div className="clinic-team__state">
@@ -139,6 +144,7 @@ export default function ClinicTeam() {
     );
   }
 
+  // No hay clínicas disponibles.
   if (clinics.length === 0) {
     return (
       <div className="clinic-team__state">
@@ -149,8 +155,10 @@ export default function ClinicTeam() {
 
   return (
     <section className="clinic-team">
+
       {/* Encabezado: selector de clínica y botón para agregar */}
       <div className="clinic-team__header">
+
         <div
           className="clinic-team__selector"
           ref={dropdownRef}
@@ -200,13 +208,14 @@ export default function ClinicTeam() {
               aria-label="Seleccionar clínica"
             >
               <div className="clinic-team__dropdown-list">
-                {clinics.map((clinic) => {
+
+                {clinics.map((item) => {
                   const selected =
-                    clinic.id === clinicId;
+                    item.id === clinicId;
 
                   return (
                     <button
-                      key={clinic.id}
+                      key={item.id}
                       type="button"
                       role="option"
                       aria-selected={selected}
@@ -214,7 +223,8 @@ export default function ClinicTeam() {
                         selected ? "is-selected" : ""
                       }`}
                       onClick={() => {
-                        setClinicId(clinic.id);
+                        setClinicId(item.id);
+
                         setIsOpen(false);
                         setEditingMember(null);
                         setDeletingMember(null);
@@ -226,7 +236,7 @@ export default function ClinicTeam() {
                       </span>
 
                       <span className="clinic-team__dropdown-name">
-                        {clinic.name}
+                        {item.name}
                       </span>
 
                       {selected && (
@@ -238,6 +248,7 @@ export default function ClinicTeam() {
                     </button>
                   );
                 })}
+
               </div>
             </div>
           )}
@@ -254,6 +265,7 @@ export default function ClinicTeam() {
             <span>Agregar integrante</span>
           </button>
         </div>
+
       </div>
 
       {/* Tabla del equipo clínico */}
@@ -308,6 +320,7 @@ export default function ClinicTeam() {
           }}
         />
       )}
+
     </section>
   );
 }
