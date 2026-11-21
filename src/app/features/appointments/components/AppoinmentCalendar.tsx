@@ -35,6 +35,10 @@ import {
 import type { StatusKey } from "../constants/Appointmentstatus";
 import type { Appointment } from "../types/appointment";
 
+import type {
+  ApiAppointmentStats,
+} from "../services/appointmentService";
+
 import "../css/appointments-calendar.css";
 
 // ============================================
@@ -57,6 +61,10 @@ type EventMoveInfo =
   | Parameters<NonNullable<CalendarProps["eventDrop"]>>[0]
   | Parameters<NonNullable<CalendarProps["eventResize"]>>[0];
 
+type DatesSetInfo = Parameters<
+  NonNullable<CalendarProps["datesSet"]>
+>[0];
+
 type EventContentInfo = {
   event: {
     extendedProps: Record<string, unknown>;
@@ -75,6 +83,13 @@ type CalendarView =
 interface Props {
   appointments: Appointment[];
 
+  stats: ApiAppointmentStats;
+
+  onMonthChange: (
+    start: string,
+    end: string,
+  ) => void;
+
   onSelectAppointment: (appointment: Appointment) => void;
 
   onSlotClick: (dateStr: string, allDay: boolean) => void;
@@ -88,6 +103,62 @@ interface Props {
   ) => Promise<boolean> | boolean;
 
   onNewAppointment: () => void;
+}
+
+// ============================================
+// FECHAS DEL MES VISUALIZADO
+// ============================================
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/**
+ * Formatear fecha local conservando su offset.
+ *
+ * No utiliza toISOString(), para evitar convertir
+ * el inicio del mes a otra fecha UTC.
+ */
+function formatLocalDateTime(date: Date): string {
+  const offset = -date.getTimezoneOffset();
+
+  const sign = offset >= 0 ? "+" : "-";
+
+  const offsetHours = Math.floor(Math.abs(offset) / 60);
+  const offsetMinutes = Math.abs(offset) % 60;
+
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `${sign}${pad(offsetHours)}:${pad(offsetMinutes)}`
+  );
+}
+
+/**
+ * Obtener el inicio y fin del mes de la fecha visualizada.
+ *
+ * El fin es exclusivo: primer día del siguiente mes.
+ */
+function getMonthRange(date: Date): {
+  start: string;
+  end: string;
+} {
+  const start = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    1,
+  );
+
+  const end = new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    1,
+  );
+
+  return {
+    start: formatLocalDateTime(start),
+    end: formatLocalDateTime(end),
+  };
 }
 
 // ============================================
@@ -182,6 +253,8 @@ function renderEventContent({
 
 export default function AppointmentCalendar({
   appointments,
+  stats,
+  onMonthChange,
   onSelectAppointment,
   onSlotClick,
   onMoveAppointment,
@@ -191,53 +264,10 @@ export default function AppointmentCalendar({
 
   const calendarRef = useRef<CalendarInstance>(null);
 
-  
-
   const [calendarTitle, setCalendarTitle] = useState("");
 
   const [activeView, setActiveView] =
     useState<CalendarView>("timeGridWeek");
-
-  // ============================================
-  // ESTADÍSTICAS
-  // ============================================
-
-  
-
-  const stats = useMemo(() => {
-    const now = new Date();
-
-    const todayStr = now.toDateString();
-
-    const today = appointments.filter(
-      (appointment) =>
-        new Date(appointment.start).toDateString() === todayStr &&
-        getStatusKey(appointment.status) !== "cancelada",
-    ).length;
-
-    const toConfirm = appointments.filter(
-      (appointment) =>
-        getStatusKey(appointment.status) === "pendiente",
-    ).length;
-
-    const upcoming = appointments.filter(
-      (appointment) =>
-        getStatusKey(appointment.status) === "confirmada" &&
-        new Date(appointment.start) >= now,
-    ).length;
-
-    const cancel = appointments.filter(
-      (appointment) =>
-        getStatusKey(appointment.status) === "cancelada",
-    ).length;
-
-    return {
-      today,
-      toConfirm,
-      upcoming,
-      cancel,
-    };
-  }, [appointments]);
 
   // ============================================
   // EVENTOS DEL CALENDARIO
@@ -245,39 +275,33 @@ export default function AppointmentCalendar({
 
   const events = useMemo(
     () =>
-      appointments 
-        .map((appointment) => {
-          const statusKey = getStatusKey(appointment.status);
+      appointments.map((appointment) => {
+        const statusKey = getStatusKey(appointment.status);
 
-          const style = STATUS[statusKey];
+        const style = STATUS[statusKey];
 
-          return {
-            id: String(appointment.id),
+        return {
+          id: String(appointment.id),
 
-            title: `${appointment.patientName} · ${appointment.treatment}`,
+          title: `${appointment.patientName} · ${appointment.treatment}`,
 
-            start: appointment.start,
+          start: appointment.start,
 
-            end: appointment.end,
+          end: appointment.end,
 
-            backgroundColor: style.bg,
+          backgroundColor: style.bg,
 
-            textColor: style.fg,
+          textColor: style.fg,
 
-            editable: !LOCKED_STATUSES.includes(statusKey),
+          editable: !LOCKED_STATUSES.includes(statusKey),
 
-            extendedProps: {
-              appointment,
-            },
-          };
-        }),
+          extendedProps: {
+            appointment,
+          },
+        };
+      }),
     [appointments],
   );
-
-  // ============================================
-  // FILTROS
-  // ============================================
-
 
   // ============================================
   // SELECCIONAR CITA
@@ -343,20 +367,23 @@ export default function AppointmentCalendar({
   };
 
   // ============================================
-  // ACTUALIZAR TÍTULO Y VISTA
+  // ACTUALIZAR TÍTULO, VISTA Y MES
   // ============================================
 
-  const handleDatesSet = (info: {
-    view: {
-      title: string;
-      type: string;
-    };
-  }) => {
+  const handleDatesSet = (info: DatesSetInfo) => {
     setCalendarTitle(
       info.view.title.toLocaleUpperCase("es-MX"),
     );
 
     setActiveView(info.view.type as CalendarView);
+
+    // Obtener la fecha central que FullCalendar está visualizando.
+    const currentDate = info.view.calendar.getDate();
+
+    // Consultar siempre el mes completo correspondiente.
+    const range = getMonthRange(currentDate);
+
+    onMonthChange(range.start, range.end);
   };
 
   // ============================================
@@ -435,22 +462,32 @@ export default function AppointmentCalendar({
       <div className="appt-stats">
         <div className="appt-stat appt-stat--today">
           <span className="appt-stat__label">Citas hoy</span>
-          <span className="appt-stat__value">{stats.today}</span>
+          <span className="appt-stat__value">
+            {stats.today}
+          </span>
         </div>
 
         <div className="appt-stat appt-stat--pending">
           <span className="appt-stat__label">Por confirmar</span>
-          <span className="appt-stat__value">{stats.toConfirm}</span>
+          <span className="appt-stat__value">
+            {stats.pending}
+          </span>
         </div>
 
         <div className="appt-stat appt-stat--confirmed">
-          <span className="appt-stat__label">Próximas confirmadas</span>
-          <span className="appt-stat__value">{stats.upcoming}</span>
+          <span className="appt-stat__label">
+            Próximas confirmadas
+          </span>
+          <span className="appt-stat__value">
+            {stats.upcoming}
+          </span>
         </div>
 
         <div className="appt-stat appt-stat--cancelled">
           <span className="appt-stat__label">Canceladas</span>
-          <span className="appt-stat__value">{stats.cancel}</span>
+          <span className="appt-stat__value">
+            {stats.cancelled}
+          </span>
         </div>
       </div>
 

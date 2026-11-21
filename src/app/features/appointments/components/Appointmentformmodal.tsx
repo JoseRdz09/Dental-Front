@@ -13,12 +13,17 @@ import type {
   ApiAppointmentOptions,
 } from "../services/appointmentService";
 
+import { usePatientSearch } from "../hooks/useAppointments";
+
 import "../css/Appointmentformmodal.css";
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 interface Props {
   mode: "create" | "edit";
   initialValues: AppointmentFormValues;
   options: ApiAppointmentOptions;
+  clinicId: number;
+  initialPatientName?: string;
   onSubmit: (values: AppointmentFormValues) => Promise<void> | void;
   onClose: () => void;
 }
@@ -36,7 +41,10 @@ const FIELD_LABELS: Record<string, string> = {
   treatment_price: "Precio del tratamiento",
 };
 
-// Obtener mensajes de errores del backend
+// ==========================================
+// OBTENER MENSAJES DE ERRORES DEL BACKEND
+// ==========================================
+
 const getAppointmentError = (err: unknown): string => {
   const error = err as ApiError;
 
@@ -94,7 +102,10 @@ const getAppointmentError = (err: unknown): string => {
   );
 };
 
-// Obtener fecha local YYYY-MM-DD
+// ==========================================
+// FECHA LOCAL YYYY-MM-DD
+// ==========================================
+
 const getLocalDate = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -103,7 +114,10 @@ const getLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// Obtener hora local HH:mm
+// ==========================================
+// HORA LOCAL HH:mm
+// ==========================================
+
 const getLocalTime = (date: Date): string => {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
@@ -111,7 +125,10 @@ const getLocalTime = (date: Date): string => {
   return `${hours}:${minutes}`;
 };
 
-// Obtener el siguiente múltiplo de 5 estrictamente posterior
+// ==========================================
+// SIGUIENTE MÚLTIPLO DE 5 MINUTOS
+// ==========================================
+
 const getNextFiveMinuteSlot = (date: Date): Date => {
   const next = new Date(date);
 
@@ -126,7 +143,10 @@ const getNextFiveMinuteSlot = (date: Date): Date => {
   return next;
 };
 
-// Obtener el siguiente múltiplo de 5 posterior a una hora
+// ==========================================
+// SIGUIENTE MÚLTIPLO DE 5 PARA UNA HORA
+// ==========================================
+
 const getNextFiveMinuteTime = (time: string): string => {
   if (!time) return "00:00";
 
@@ -145,7 +165,10 @@ const getNextFiveMinuteTime = (time: string): string => {
   ).padStart(2, "0")}`;
 };
 
-// Validar intervalos de 5 minutos
+// ==========================================
+// VALIDAR INTERVALOS DE 5 MINUTOS
+// ==========================================
+
 const isFiveMinuteInterval = (time: string): boolean => {
   if (!time) return false;
 
@@ -154,7 +177,10 @@ const isFiveMinuteInterval = (time: string): boolean => {
   return Number(minutes) % 5 === 0;
 };
 
-// Convertir fecha y hora local a Date
+// ==========================================
+// FECHA Y HORA LOCAL A DATE
+// ==========================================
+
 const getSelectedDateTime = (
   date: string,
   time: string
@@ -162,18 +188,16 @@ const getSelectedDateTime = (
   return new Date(`${date}T${time}:00`);
 };
 
-// Normalizar texto para búsquedas sin acentos
-const normalizeText = (text: string): string =>
-  text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+// ==========================================
+// COMPONENTE
+// ==========================================
 
 export default function AppointmentFormModal({
   mode,
   initialValues,
   options,
+  clinicId,
+  initialPatientName = "",
   onSubmit,
   onClose,
 }: Props) {
@@ -197,14 +221,45 @@ export default function AppointmentFormModal({
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
   const [now, setNow] = useState(() => new Date());
 
-  const [patientSearch, setPatientSearch] = useState("");
-  const [showPatientResults, setShowPatientResults] = useState(false);
+  // ==========================================
+  // BÚSQUEDA DE PACIENTES
+  // ==========================================
+
+  const [patientSearch, setPatientSearch] = useState(
+    initialPatientName
+  );
+
+  const [debouncedPatientSearch, setDebouncedPatientSearch] =
+    useState("");
+
+  const [showPatientResults, setShowPatientResults] =
+    useState(false);
+
+  // Esperar 300 ms antes de consultar el backend.
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedPatientSearch(
+        showPatientResults ? patientSearch.trim() : ""
+      );
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [patientSearch, showPatientResults]);
+
+  // Consultar pacientes de la clínica seleccionada.
+  const {
+    patients,
+    loading: patientsLoading,
+    error: patientsError,
+  } = usePatientSearch(
+    clinicId,
+    debouncedPatientSearch
+  );
 
   // ==========================================
-  // SINCRONIZAR LOS VALORES DEL FORMULARIO
+  // SINCRONIZAR VALORES DEL FORMULARIO
   // ==========================================
 
   useEffect(() => {
@@ -225,6 +280,9 @@ export default function AppointmentFormModal({
     });
 
     setError(null);
+
+    setPatientSearch(initialPatientName);
+    setDebouncedPatientSearch("");
     setShowPatientResults(false);
   }, [
     initialValues.patientId,
@@ -235,29 +293,8 @@ export default function AppointmentFormModal({
     initialValues.endTime,
     initialValues.status,
     initialValues.details,
+    initialPatientName,
   ]);
-
-  // ==========================================
-  // CARGAR NOMBRE DEL PACIENTE AL EDITAR
-  // ==========================================
-
-  useEffect(() => {
-    if (initialValues.patientId == null) {
-      setPatientSearch("");
-      return;
-    }
-
-    const selectedPatient = options.patients.find(
-      (patient) =>
-        Number(patient.id) === Number(initialValues.patientId)
-    );
-
-    if (selectedPatient) {
-      setPatientSearch(
-        `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
-      );
-    }
-  }, [initialValues.patientId, options.patients]);
 
   // ==========================================
   // MANTENER ACTUALIZADA LA HORA
@@ -283,34 +320,27 @@ export default function AppointmentFormModal({
     }
   }, []);
 
-  // Fecha actual
+  // ==========================================
+  // VALIDACIONES DE FECHA Y HORARIO
+  // ==========================================
+
   const today = getLocalDate(now);
 
-  // Comprobar si se conserva la fecha original
   const isOriginalDate =
     mode === "edit" &&
     values.date === initialValues.date;
 
-  // Comprobar si se conserva la hora original de inicio
   const isOriginalStartTime =
     isOriginalDate &&
     values.startTime === initialValues.startTime;
 
-  // Comprobar si se conserva la hora original de finalización
-  const isOriginalEndTime =
-    isOriginalDate &&
-    values.endTime === initialValues.endTime;
-
-  // ¿La cita corresponde a hoy?
   const isToday = values.date === today;
 
-  // Calcular siguiente horario disponible
   const nextSlot = getNextFiveMinuteSlot(now);
 
   const nextSlotDate = getLocalDate(nextSlot);
   const nextSlotTime = getLocalTime(nextSlot);
 
-  // Fecha mínima
   const minDate =
     mode === "edit" &&
     isOriginalDate &&
@@ -318,7 +348,6 @@ export default function AppointmentFormModal({
       ? initialValues.date
       : today;
 
-  // Hora mínima de inicio
   const minStartTime = isOriginalStartTime
     ? "00:00"
     : isToday
@@ -327,13 +356,11 @@ export default function AppointmentFormModal({
         : undefined
       : "00:00";
 
-  // Determinar si ya no quedan horarios disponibles hoy
   const noMoreSlotsToday =
     isToday &&
     nextSlotDate !== today &&
     !isOriginalStartTime;
 
-  // Hora mínima de finalización
   const minEndTime = values.startTime
     ? getNextFiveMinuteTime(values.startTime)
     : "00:00";
@@ -497,7 +524,7 @@ export default function AppointmentFormModal({
       keepingOriginalDate &&
       values.endTime === initialValues.endTime;
 
-    // Validar fecha
+    // Validar fecha.
     if (!values.date) {
       setError("Selecciona una fecha para la cita.");
       return;
@@ -513,31 +540,31 @@ export default function AppointmentFormModal({
       return;
     }
 
-    // Validar paciente
+    // Validar paciente.
     if (values.patientId === null) {
       setError("Selecciona un paciente.");
       return;
     }
 
-    // Validar tratamiento
+    // Validar tratamiento.
     if (values.treatmentId === null) {
       setError("Selecciona un tratamiento.");
       return;
     }
 
-    // Validar hora de inicio
+    // Validar hora de inicio.
     if (!values.startTime) {
       setError("Selecciona una hora de inicio.");
       return;
     }
 
-    // Validar hora de finalización
+    // Validar hora de finalización.
     if (!values.endTime) {
       setError("Selecciona una hora de finalización.");
       return;
     }
 
-    // Validar múltiplos de 5
+    // Validar intervalos de 5 minutos.
     if (
       !keepingOriginalStart &&
       !isFiveMinuteInterval(values.startTime)
@@ -558,7 +585,7 @@ export default function AppointmentFormModal({
       return;
     }
 
-    // Validar que la hora de inicio sea futura
+    // Validar que la hora de inicio sea futura.
     if (
       values.date === submitToday &&
       !keepingOriginalStart
@@ -576,7 +603,7 @@ export default function AppointmentFormModal({
       }
     }
 
-    // Validar hora final
+    // Validar hora final.
     if (values.endTime <= values.startTime) {
       setError(
         "La hora de finalización debe ser posterior a la hora de inicio."
@@ -608,18 +635,6 @@ export default function AppointmentFormModal({
   };
 
   // ==========================================
-  // PACIENTES FILTRADOS
-  // ==========================================
-
-  const filteredPatients = options.patients
-    .filter((patient) =>
-      normalizeText(
-        `${patient.first_name} ${patient.last_name}`
-      ).includes(normalizeText(patientSearch))
-    )
-    .slice(0, 10);
-
-  // ==========================================
   // TRATAMIENTOS DISPONIBLES
   // ==========================================
 
@@ -636,9 +651,10 @@ export default function AppointmentFormModal({
     ...options.treatments.filter(
       (treatment) => treatment.is_active === true
     ),
-    ...(selectedInactiveTreatment ? [selectedInactiveTreatment] : []),
+    ...(selectedInactiveTreatment
+      ? [selectedInactiveTreatment]
+      : []),
   ];
-
 
   // ==========================================
   // RENDER
@@ -692,8 +708,8 @@ export default function AppointmentFormModal({
                 setPatientSearch(e.target.value);
                 setShowPatientResults(true);
 
-                // Al modificar la búsqueda, se invalida
-                // la selección anterior.
+                // Al modificar la búsqueda,
+                // se invalida la selección anterior.
                 setValues((prev) => ({
                   ...prev,
                   patientId: null,
@@ -713,31 +729,48 @@ export default function AppointmentFormModal({
             {showPatientResults &&
               patientSearch.trim() !== "" && (
                 <div className="patient-search-results">
-                  {filteredPatients.map((patient) => (
-                    <button
-                      key={patient.id}
-                      type="button"
-                      onClick={() => {
-                        handlePatientChange(
-                          String(patient.id)
-                        );
+                  {patientsLoading && (
+                    // <div className="patient-search-results__empty">
+                    //   Buscando pacientes...
+                    // </div>
+                    <LoadingScreen />
+                  )}
 
-                        setPatientSearch(
-                          `${patient.first_name} ${patient.last_name}`
-                        );
-
-                        setShowPatientResults(false);
-                      }}
-                    >
-                      {patient.first_name} {patient.last_name}
-                    </button>
-                  ))}
-
-                  {filteredPatients.length === 0 && (
+                  {!patientsLoading && patientsError && (
                     <div className="patient-search-results__empty">
-                      No se encontraron pacientes.
+                      No se pudieron cargar los pacientes.
                     </div>
                   )}
+
+                  {!patientsLoading &&
+                    !patientsError &&
+                    patients.map((patient) => (
+                      <button
+                        key={patient.id}
+                        type="button"
+                        onClick={() => {
+                          handlePatientChange(
+                            String(patient.id)
+                          );
+
+                          setPatientSearch(
+                            `${patient.first_name} ${patient.last_name}`.trim()
+                          );
+
+                          setShowPatientResults(false);
+                        }}
+                      >
+                        {patient.first_name} {patient.last_name}
+                      </button>
+                    ))}
+
+                  {!patientsLoading &&
+                    !patientsError &&
+                    patients.length === 0 && (
+                      <div className="patient-search-results__empty">
+                        No se encontraron pacientes.
+                      </div>
+                    )}
                 </div>
               )}
           </div>

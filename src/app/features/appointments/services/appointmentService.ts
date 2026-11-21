@@ -8,38 +8,41 @@ import type {
 
 import type { AppointmentFormValues } from "../types/appointmentForm";
 
-export interface ApiClinic {
+/* ==========================================
+   API TYPES
+========================================== */
+
+export type ApiClinic = {
   id: number;
   name: string;
-}
+};
 
-export interface ApiPatient {
+export type ApiPatient = {
   id: number;
   first_name: string;
   last_name: string;
-}
+};
 
-export interface ApiDentist {
+export type ApiDentist = {
   id: number;
   name: string;
-}
+};
 
-export interface ApiTreatment {
+export type ApiTreatment = {
   id: number;
   name: string;
   description?: string | null;
   duration: number;
   price: string | number;
   is_active: boolean;
-}
+};
 
-export interface ApiAppointmentOptions {
-  patients: ApiPatient[];
+export type ApiAppointmentOptions = {
   dentists: ApiDentist[];
   treatments: ApiTreatment[];
-}
+};
 
-export interface ApiAppointment {
+export type ApiAppointment = {
   id: number;
   clinic_id: number;
   patient_id: number;
@@ -54,20 +57,40 @@ export interface ApiAppointment {
   patient: ApiPatient | null;
   dentist: ApiDentist | null;
   treatment: ApiTreatment | null;
-}
+};
 
-export interface AppointmentsResponse {
-  clinics: ApiClinic[];
-  selected_clinic_id: number | null;
+export type ApiAppointmentStats = {
+  today: number;
+  pending: number;
+  upcoming: number;
+  cancelled: number;
+};
+
+export type ApiAppointmentsResponse = {
   data: ApiAppointment[];
-  options: ApiAppointmentOptions;
-}
+};
 
-export interface CalendarAppointment extends Appointment {
+export type ApiClinicsResponse = {
+  data: ApiClinic[];
+};
+
+export type ApiAppointmentOptionsResponse = {
+  data: ApiAppointmentOptions;
+};
+
+export type ApiAppointmentStatsResponse = {
+  data: ApiAppointmentStats;
+};
+
+export type ApiPatientsResponse = {
+  data: ApiPatient[];
+};
+
+export type CalendarAppointment = Appointment & {
   title: string;
-}
+};
 
-export interface AppointmentPayload {
+export type AppointmentPayload = {
   clinic_id: number;
   patient_id: number;
   dentist_user_id: number | null;
@@ -76,7 +99,11 @@ export interface AppointmentPayload {
   end_at: string;
   status: AppointmentStatus;
   notes: string;
-}
+};
+
+/* ==========================================
+   APPOINTMENT MAPPING
+========================================== */
 
 function normalizeAppointmentStatus(
   status: string,
@@ -101,7 +128,9 @@ function normalizeAppointmentStatus(
       return "Cancelada";
 
     default:
-      throw new Error(`Estado de cita no reconocido: "${status}"`);
+      throw new Error(
+        `Estado de cita no reconocido: "${status}"`,
+      );
   }
 }
 
@@ -128,35 +157,116 @@ function mapAppointment(
   };
 }
 
+/* ==========================================
+   CLINICS
+========================================== */
+
+export async function getClinics(): Promise<ApiClinic[]> {
+  const response = await api.get<ApiClinicsResponse>(
+    "/api/appointments/clinics",
+  );
+
+  return response.data.data;
+}
+
+/* ==========================================
+   APPOINTMENTS
+========================================== */
+
 export async function getAppointments(
-  clinicId?: number | null,
-  start?: string,
-  end?: string,
-) {
-  const response = await api.get<AppointmentsResponse>(
+  clinicId: number,
+  start: string,
+  end: string,
+): Promise<CalendarAppointment[]> {
+  const response = await api.get<ApiAppointmentsResponse>(
     "/api/appointments",
     {
       params: {
-        ...(clinicId != null ? { clinic_id: clinicId } : {}),
-        ...(start ? { start } : {}),
-        ...(end ? { end } : {}),
+        clinic_id: clinicId,
+        start,
+        end,
       },
     },
   );
 
-  return {
-    clinics: response.data.clinics,
-    selected_clinic_id: response.data.selected_clinic_id,
-    data: response.data.data.map(mapAppointment),
-    options: response.data.options,
-  };
+  return response.data.data.map(mapAppointment);
 }
+
+/* ==========================================
+   APPOINTMENT STATISTICS
+========================================== */
+
+export async function getAppointmentStats(
+  clinicId: number,
+  start: string,
+  end: string,
+): Promise<ApiAppointmentStats> {
+  const response = await api.get<ApiAppointmentStatsResponse>(
+    "/api/appointments/stats",
+    {
+      params: {
+        clinic_id: clinicId,
+        start,
+        end,
+      },
+    },
+  );
+
+  return response.data.data;
+}
+
+/* ==========================================
+   FORM OPTIONS
+========================================== */
+
+export async function getAppointmentOptions(
+  clinicId: number,
+): Promise<ApiAppointmentOptions> {
+  const response = await api.get<ApiAppointmentOptionsResponse>(
+    "/api/appointments/options",
+    {
+      params: {
+        clinic_id: clinicId,
+      },
+    },
+  );
+
+  return response.data.data;
+}
+
+/* ==========================================
+   PATIENT SEARCH
+========================================== */
+
+export async function searchPatients(
+  clinicId: number,
+  search: string,
+): Promise<ApiPatient[]> {
+  const response = await api.get<ApiPatientsResponse>(
+    `/api/clinics/${clinicId}/patients/search`,
+    {
+      params: {
+        q: search,
+      },
+    },
+  );
+
+  return response.data.data;
+}
+
+/* ==========================================
+   CREATE APPOINTMENT
+========================================== */
 
 export async function createAppointment(
   payload: AppointmentPayload,
 ): Promise<void> {
   await api.post("/api/appointments", payload);
 }
+
+/* ==========================================
+   UPDATE APPOINTMENT
+========================================== */
 
 export async function updateAppointment(
   id: string,
@@ -165,12 +275,21 @@ export async function updateAppointment(
   await api.put(`/api/appointments/${id}`, payload);
 }
 
+/* ==========================================
+   FORM VALUES TO API PAYLOAD
+========================================== */
+
 export function formValuesToPayload(
   values: AppointmentFormValues,
   clinicId: number,
 ): AppointmentPayload {
-  if (values.patientId === null || values.treatmentId === null) {
-    throw new Error("Selecciona un paciente y un tratamiento.");
+  if (
+    values.patientId === null ||
+    values.treatmentId === null
+  ) {
+    throw new Error(
+      "Selecciona un paciente y un tratamiento.",
+    );
   }
 
   return {
@@ -178,12 +297,16 @@ export function formValuesToPayload(
     patient_id: values.patientId,
     dentist_user_id: values.dentistUserId,
     treatment_id: values.treatmentId,
+
+    // Se conserva la conversión UTC actual.
     start_at: new Date(
       `${values.date}T${values.startTime}`,
     ).toISOString(),
+
     end_at: new Date(
       `${values.date}T${values.endTime}`,
     ).toISOString(),
+
     status: values.status,
     notes: values.details.trim(),
   };

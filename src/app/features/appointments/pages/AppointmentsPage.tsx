@@ -15,13 +15,28 @@ import {
   slotToFormValues,
 } from "../utils/Datetime";
 
+// ============================================
+// TIPOS
+// ============================================
+
 interface ModalState {
   mode: "create" | "edit";
   values: AppointmentFormValues;
+  initialPatientName?: string;
 }
+
+interface MonthRange {
+  start: string;
+  end: string;
+}
+
+// ============================================
+// SIGUIENTE HORARIO DISPONIBLE
+// ============================================
 
 function getNextAvailableHour(): string {
   const next = new Date();
+
   next.setHours(next.getHours() + 1, 0, 0, 0);
 
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -29,19 +44,69 @@ function getNextAvailableHour(): string {
   return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`;
 }
 
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 export default function AppointmentsPage() {
+  // ============================================
+  // RANGO DEL MES VISUALIZADO
+  // ============================================
+
+  const [monthRange, setMonthRange] =
+    useState<MonthRange | null>(null);
+
+  // ============================================
+  // CONSULTAS Y ACCIONES
+  // ============================================
+
   const {
     appointments,
     options,
+    stats,
+    clinicId,
     loading,
+    statsLoading,
     error,
     reloadAppointments,
     saveAppointment,
     moveAppointment,
-  } = useAppointments();
+  } = useAppointments(
+    monthRange?.start,
+    monthRange?.end,
+  );
+
+  // ============================================
+  // ESTADOS LOCALES
+  // ============================================
 
   const [modal, setModal] = useState<ModalState | null>(null);
+
   const [saving, setSaving] = useState(false);
+
+  // ============================================
+  // ACTUALIZAR MES VISUALIZADO
+  // ============================================
+
+  const handleMonthChange = (
+    start: string,
+    end: string,
+  ) => {
+    setMonthRange((current) => {
+      if (
+        current?.start === start &&
+        current?.end === end
+      ) {
+        return current;
+      }
+
+      return { start, end };
+    });
+  };
+
+  // ============================================
+  // ABRIR Y CERRAR MODAL
+  // ============================================
 
   const openModal = (newModal: ModalState) => {
     toast.dismiss();
@@ -54,7 +119,13 @@ export default function AppointmentsPage() {
     }
   };
 
-  const handleSubmit = async (values: AppointmentFormValues) => {
+  // ============================================
+  // GUARDAR CITA
+  // ============================================
+
+  const handleSubmit = async (
+    values: AppointmentFormValues,
+  ) => {
     if (saving || !modal) return;
 
     const mode = modal.mode;
@@ -86,12 +157,22 @@ export default function AppointmentsPage() {
     }
   };
 
+  // ============================================
+  // MOVER CITA
+  // ============================================
+
   const handleMoveAppointment = async (
     appointmentId: string,
-    range: { start: string; end: string },
+    range: {
+      start: string;
+      end: string;
+    },
   ): Promise<boolean> => {
     try {
-      const success = await moveAppointment(appointmentId, range);
+      const success = await moveAppointment(
+        appointmentId,
+        range,
+      );
 
       if (!success) {
         toast.error("No se pudo mover la cita.");
@@ -107,6 +188,10 @@ export default function AppointmentsPage() {
     }
   };
 
+  // ============================================
+  // REINTENTAR CONSULTAS
+  // ============================================
+
   const handleRetry = async () => {
     try {
       await reloadAppointments();
@@ -119,11 +204,19 @@ export default function AppointmentsPage() {
     }
   };
 
-  if (loading && appointments.length === 0 && !error) {
+  // ============================================
+  // CARGA INICIAL DE CLÍNICAS
+  // ============================================
+
+  if (!clinicId && loading && !error) {
     return <LoadingScreen />;
   }
 
-  if (error && appointments.length === 0) {
+  // ============================================
+  // ERROR SIN CLÍNICA DISPONIBLE
+  // ============================================
+
+  if (!clinicId && error) {
     return (
       <div>
         <p role="alert">{error}</p>
@@ -139,20 +232,54 @@ export default function AppointmentsPage() {
     );
   }
 
+  // ============================================
+  // RENDER
+  // ============================================
+
   return (
     <>
+      {/* ESTADOS DE CARGA */}
+
       {loading && (
+        // <p role="status" aria-live="polite">
+        //   Actualizando citas...
+        // </p>
+        <LoadingScreen />
+      )}
+
+      {statsLoading && (
         <p role="status" aria-live="polite">
-          Actualizando citas...
+          Actualizando estadísticas...
         </p>
       )}
 
+      {/* ERROR DE CONSULTA */}
+
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+
+          <button
+            type="button"
+            onClick={() => void handleRetry()}
+            disabled={loading}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* CALENDARIO */}
+
       <AppointmentCalendar
         appointments={appointments}
+        stats={stats}
+        onMonthChange={handleMonthChange}
         onSelectAppointment={(appointment) =>
           openModal({
             mode: "edit",
             values: appointmentToFormValues(appointment),
+            initialPatientName: appointment.patientName,
           })
         }
         onSlotClick={(dateStr, allDay) =>
@@ -162,20 +289,30 @@ export default function AppointmentsPage() {
           })
         }
         onMoveAppointment={(appointment, range) =>
-          handleMoveAppointment(String(appointment.id), range)
+          handleMoveAppointment(
+            String(appointment.id),
+            range,
+          )
         }
         onNewAppointment={() =>
           openModal({
             mode: "create",
-            values: slotToFormValues(getNextAvailableHour(), false),
+            values: slotToFormValues(
+              getNextAvailableHour(),
+              false,
+            ),
           })
         }
       />
 
-      {modal && (
+      {/* MODAL */}
+
+      {modal && clinicId !== null && (
         <AppointmentFormModal
           mode={modal.mode}
           initialValues={modal.values}
+          initialPatientName={modal.initialPatientName}
+          clinicId={clinicId}
           options={options}
           onSubmit={handleSubmit}
           onClose={closeModal}

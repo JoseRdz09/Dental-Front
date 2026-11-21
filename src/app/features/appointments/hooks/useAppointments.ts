@@ -6,7 +6,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import type { Appointment } from "../types/appointment";
 import type { AppointmentFormValues } from "../types/appointmentForm";
 
 import {
@@ -14,69 +13,198 @@ import {
   updateAppointment,
   formValuesToPayload,
   getAppointments,
+  getClinics,
+  getAppointmentOptions,
+  getAppointmentStats,
+  searchPatients,
   type ApiAppointmentOptions,
+  type ApiAppointmentStats,
   type ApiClinic,
 } from "../services/appointmentService";
 
-interface RequestResult {
-  clinics: ApiClinic[];
-  selected_clinic_id: number | null;
-  data: Appointment[];
-  options: ApiAppointmentOptions;
-}
+/* ==========================================
+   QUERY KEYS
+========================================== */
 
-interface MoveAppointmentPayload {
+export const CLINICS_QUERY_KEY = ["appointment-clinics"] as const;
+
+export const APPOINTMENTS_QUERY_KEY = ["appointments"] as const;
+
+export const APPOINTMENT_STATS_QUERY_KEY = [
+  "appointment-stats",
+] as const;
+
+export const APPOINTMENT_OPTIONS_QUERY_KEY = [
+  "appointment-options",
+] as const;
+
+export const PATIENT_SEARCH_QUERY_KEY = [
+  "appointment-patient-search",
+] as const;
+
+/* ==========================================
+   TYPES
+========================================== */
+
+type MoveAppointmentPayload = {
   id: string;
   range: {
     start: string;
     end: string;
   };
-}
+};
+
+/* ==========================================
+   DEFAULT VALUES
+========================================== */
 
 const EMPTY_OPTIONS: ApiAppointmentOptions = {
-  patients: [],
   dentists: [],
   treatments: [],
 };
 
-export const APPOINTMENTS_QUERY_KEY = ["appointments"] as const;
+const EMPTY_STATS: ApiAppointmentStats = {
+  today: 0,
+  pending: 0,
+  upcoming: 0,
+  cancelled: 0,
+};
 
-export function useAppointments(start?: string, end?: string) {
+/* ==========================================
+   APPOINTMENTS HOOK
+========================================== */
+
+export function useAppointments(
+  start?: string,
+  end?: string,
+) {
   const queryClient = useQueryClient();
 
-  // Clínica seleccionada manualmente.
   const [selectedClinicId, setSelectedClinicId] =
     useState<number | null>(null);
 
-  // Consulta de citas y opciones.
-  const appointmentsQuery = useQuery<RequestResult>({
+  /* ==========================================
+     CLINICS
+  ========================================== */
+
+  const clinicsQuery = useQuery<ApiClinic[]>({
+    queryKey: CLINICS_QUERY_KEY,
+    queryFn: getClinics,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const clinics = clinicsQuery.data ?? [];
+
+  const clinicId =
+    selectedClinicId ?? clinics[0]?.id ?? null;
+
+  /* ==========================================
+     APPOINTMENTS
+  ========================================== */
+
+  const appointmentsQuery = useQuery({
     queryKey: [
       ...APPOINTMENTS_QUERY_KEY,
-      selectedClinicId ?? "default",
+      clinicId,
       start ?? null,
       end ?? null,
     ],
-    queryFn: () => getAppointments(selectedClinicId, start, end),
+
+    queryFn: () => {
+      if (!clinicId || !start || !end) {
+        throw new Error("Falta el rango de fechas de las citas.");
+      }
+
+      return getAppointments(clinicId, start, end);
+    },
+
+    enabled: clinicId !== null && Boolean(start && end),
+
     staleTime: 30 * 1000,
   });
 
-  const response = appointmentsQuery.data;
+  const appointments = appointmentsQuery.data ?? [];
 
-  const appointments = response?.data ?? [];
-  const clinics = response?.clinics ?? [];
+  /* ==========================================
+     MONTHLY STATISTICS
+  ========================================== */
 
-  const clinicId =
-    selectedClinicId ?? response?.selected_clinic_id ?? null;
+  const statsQuery = useQuery({
+    queryKey: [
+      ...APPOINTMENT_STATS_QUERY_KEY,
+      clinicId,
+      start ?? null,
+      end ?? null,
+    ],
 
-  const options = response?.options ?? EMPTY_OPTIONS;
+    queryFn: () => {
+      if (!clinicId || !start || !end) {
+        throw new Error("Falta el rango mensual de las estadísticas.");
+      }
 
-  // Invalidar las consultas de citas.
-  const invalidateAppointments = () =>
-    queryClient.invalidateQueries({
-      queryKey: APPOINTMENTS_QUERY_KEY,
-    });
+      return getAppointmentStats(clinicId, start, end);
+    },
 
-  // Crear o actualizar una cita.
+    enabled: clinicId !== null && Boolean(start && end),
+
+    staleTime: 30 * 1000,
+  });
+
+  const stats = statsQuery.data ?? EMPTY_STATS;
+
+  /* ==========================================
+     APPOINTMENT OPTIONS
+  ========================================== */
+
+  const optionsQuery = useQuery({
+    queryKey: [
+      ...APPOINTMENT_OPTIONS_QUERY_KEY,
+      clinicId,
+    ],
+
+    queryFn: () => {
+      if (!clinicId) {
+        throw new Error("No hay una clínica seleccionada.");
+      }
+
+      return getAppointmentOptions(clinicId);
+    },
+
+    enabled: clinicId !== null,
+
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const options = optionsQuery.data ?? EMPTY_OPTIONS;
+
+  /* ==========================================
+     INVALIDATE CALENDAR DATA
+  ========================================== */
+
+  const invalidateCalendar = async () => {
+    if (!clinicId) return;
+
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [
+          ...APPOINTMENTS_QUERY_KEY,
+          clinicId,
+        ],
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          ...APPOINTMENT_STATS_QUERY_KEY,
+          clinicId,
+        ],
+      }),
+    ]);
+  };
+
+  /* ==========================================
+     SAVE APPOINTMENT
+  ========================================== */
+
   const saveMutation = useMutation({
     mutationFn: async (values: AppointmentFormValues) => {
       if (!clinicId) {
@@ -92,10 +220,13 @@ export function useAppointments(start?: string, end?: string) {
       }
     },
 
-    onSuccess: invalidateAppointments,
+    onSuccess: invalidateCalendar,
   });
 
-  // Mover una cita desde el calendario.
+  /* ==========================================
+     MOVE APPOINTMENT
+  ========================================== */
+
   const moveMutation = useMutation({
     mutationFn: async ({
       id,
@@ -114,7 +245,9 @@ export function useAppointments(start?: string, end?: string) {
         appointment.patientId === null ||
         appointment.treatmentId === null
       ) {
-        throw new Error("No se encontró la información de la cita.");
+        throw new Error(
+          "No se encontró la información de la cita.",
+        );
       }
 
       await updateAppointment(id, {
@@ -129,32 +262,44 @@ export function useAppointments(start?: string, end?: string) {
       });
     },
 
-    onSuccess: invalidateAppointments,
+    onSuccess: invalidateCalendar,
 
     onError: () => {
-      // Recuperar la información real del calendario.
-      void invalidateAppointments();
+      void invalidateCalendar();
     },
   });
 
-  // Cambio manual de clínica.
+  /* ==========================================
+     SELECT CLINIC
+  ========================================== */
+
   const selectClinic = (newClinicId: number) => {
     if (newClinicId === clinicId) return;
 
     setSelectedClinicId(newClinicId);
   };
 
-  // Recargar citas manualmente.
+  /* ==========================================
+     RELOAD APPOINTMENTS
+  ========================================== */
+
   const reloadAppointments = async () => {
-    await appointmentsQuery.refetch();
+    await Promise.all([
+      appointmentsQuery.refetch(),
+      statsQuery.refetch(),
+    ]);
   };
 
-  // Guardar cita.
-  const saveAppointment = async (values: AppointmentFormValues) => {
+  /* ==========================================
+     PUBLIC ACTIONS
+  ========================================== */
+
+  const saveAppointment = async (
+    values: AppointmentFormValues,
+  ) => {
     await saveMutation.mutateAsync(values);
   };
 
-  // Mover cita.
   const moveAppointment = async (
     id: string,
     range: { start: string; end: string },
@@ -168,22 +313,82 @@ export function useAppointments(start?: string, end?: string) {
     }
   };
 
+  /* ==========================================
+     ERROR
+  ========================================== */
+
+  const queryError =
+    clinicsQuery.error ??
+    appointmentsQuery.error ??
+    statsQuery.error ??
+    optionsQuery.error;
+
+  /* ==========================================
+     RETURN
+  ========================================== */
+
   return {
     appointments,
     clinics,
     clinicId,
     options,
+    stats,
 
-    loading: appointmentsQuery.isLoading,
-    error: appointmentsQuery.error
-      ? appointmentsQuery.error instanceof Error
-        ? appointmentsQuery.error.message
-        : "No se pudieron cargar las citas."
+    loading:
+      clinicsQuery.isLoading ||
+      appointmentsQuery.isLoading,
+
+    statsLoading: statsQuery.isLoading,
+    optionsLoading: optionsQuery.isLoading,
+
+    error: queryError
+      ? queryError instanceof Error
+        ? queryError.message
+        : "No se pudieron cargar los datos de las citas."
       : null,
 
     selectClinic,
     reloadAppointments,
     saveAppointment,
     moveAppointment,
+  };
+}
+
+/* ==========================================
+   PATIENT SEARCH HOOK
+========================================== */
+
+export function usePatientSearch(
+  clinicId: number | null,
+  search: string,
+) {
+  const normalizedSearch = search.trim();
+
+  const patientsQuery = useQuery({
+    queryKey: [
+      ...PATIENT_SEARCH_QUERY_KEY,
+      clinicId,
+      normalizedSearch,
+    ],
+
+    queryFn: () => {
+      if (!clinicId) {
+        throw new Error("No hay una clínica seleccionada.");
+      }
+
+      return searchPatients(clinicId, normalizedSearch);
+    },
+
+    enabled:
+      clinicId !== null &&
+      normalizedSearch.length >= 1,
+
+    staleTime: 30 * 1000,
+  });
+
+  return {
+    patients: patientsQuery.data ?? [],
+    loading: patientsQuery.isLoading,
+    error: patientsQuery.error,
   };
 }
