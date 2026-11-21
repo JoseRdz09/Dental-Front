@@ -10,6 +10,7 @@ import EditClinicModal from "../components/EditClinicModal";
 import CreateClinicModal from "../components/CreateClinicModal";
 
 import type { Clinic } from "../types/clinic";
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 export default function ClinicsOrganizations() {
   const queryClient = useQueryClient();
@@ -99,7 +100,7 @@ export default function ClinicsOrganizations() {
       </header>
 
       {loading ? (
-        <p>Cargando clínicas...</p>
+        < LoadingScreen />
       ) : error ? (
         <p className="clinics-error">{error}</p>
       ) : clinics.length === 0 ? (

@@ -28,6 +28,14 @@ export interface TreatmentResponse {
   treatment?: Treatment;
 }
 
+export interface CreateTreatmentPayload {
+  name: string;
+  description: string | null;
+  duration: number;
+  price: number;
+  is_active: boolean;
+}
+
 export interface ApiErrorResponse {
   message?: string;
   errors?: Record<string, string[]>;

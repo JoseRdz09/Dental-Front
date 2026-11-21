@@ -30,6 +30,7 @@ export interface ApiTreatment {
   description?: string | null;
   duration: number;
   price: string | number;
+  is_active: boolean;
 }
 
 export interface ApiAppointmentOptions {

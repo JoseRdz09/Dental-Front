@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Pencil,
   Trash2,
@@ -11,6 +11,9 @@ import {
   Timer,
   DollarSign,
   Stethoscope,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -21,6 +24,7 @@ import type {
   Treatment,
   UpdateTreatmentPayload,
 } from "../types/treatment";
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 interface TreatmentsPageProps {
   clinicId: number;
@@ -146,6 +150,63 @@ export default function TreatmentsPage({
     }
   };
 
+  // Search and pagination
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const ITEMS_PER_PAGE = 8;
+
+  // Normalize text (ignore accents and uppercase)
+  const normalizeSearch = (value: string) => {
+    return value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+  };
+
+  // Filter treatments (accent-insensitive search)
+  const filteredTreatments = treatments.filter((treatment) => {
+    const search = normalizeSearch(searchTerm);
+
+    const name = normalizeSearch(treatment.name);
+    const description = normalizeSearch(
+      treatment.description ?? ""
+    );
+
+    return (
+      name.includes(search) ||
+      description.includes(search)
+    );
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(
+    filteredTreatments.length / ITEMS_PER_PAGE
+  );
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  const paginatedTreatments = filteredTreatments.slice(
+    startIndex,
+    startIndex + ITEMS_PER_PAGE
+  );
+
+  // Reset pagination when searching
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  // Ensure current page is valid
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  
+
   const formatPrice = (price: number | string) =>
     Number(price).toLocaleString("es-MX", {
       style: "currency",
@@ -156,8 +217,7 @@ export default function TreatmentsPage({
   if (loading) {
     return (
       <div className="treatments-loading">
-        <Loader2 size={32} />
-        <p>Loading treatments...</p>
+        <LoadingScreen />
       </div>
     );
   }
@@ -186,34 +246,64 @@ export default function TreatmentsPage({
               <Stethoscope size={21} />
             </div>
 
-            <h2 className="treatments__title">
-              Treatments
-            </h2>
+            <h1 className="treatments__title">
+              Tratamientos
+            </h1>
           </div>
 
           <p className="treatments__description">
-            Manage your clinic treatments and prices.
+            Gestiona los tratamientos y precios de tu clínica.
           </p>
         </div>
 
         <div className="treatments__count">
           <span className="treatments__dot" />
-          <span>{treatments.length} treatments</span>
+          <span>{treatments.length} Tratamientos</span>
         </div>
       </div>
 
+      {/* Search */}
+      <div className="treatments__toolbar">
+        <div className="treatments__search">
+          <Search size={18} />
+
+          <input
+            type="text"
+            placeholder="Buscar tratamiento por nombre o descripción..."
+            value={searchTerm}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => handleSearch("")}
+              title="Limpiar búsqueda"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        <span className="treatments__results">
+          {filteredTreatments.length} resultados
+        </span>
+      </div>
+
+      
       {/* Table */}
       <div className="treatments__table-container">
         <div className="treatments__table-scroll">
           <table className="treatments__table">
-
             <thead>
               <tr>
-                <th>Treatment</th>
-                <th>Duration</th>
-                <th>Price</th>
+                <th>Tratamiento</th>
+                <th>Duración</th>
+                <th>Precio</th>
                 <th>Status</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
+                <th className="treatments__actions-header">
+                  Acciones
+                </th>
               </tr>
             </thead>
 
@@ -227,31 +317,48 @@ export default function TreatmentsPage({
                       </div>
 
                       <p className="treatments__empty-title">
-                        No treatments registered
+                        Sin tratamientos registrados
                       </p>
 
                       <p className="treatments__empty-description">
-                        Your clinic treatments will appear here.
+                        Aquí aparecerán tus tratamientos de la clínica.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredTreatments.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="treatments__empty">
+                      <div className="treatments__empty-icon">
+                        <Search size={26} />
+                      </div>
+
+                      <p className="treatments__empty-title">
+                        No se encontraron tratamientos
+                      </p>
+
+                      <p className="treatments__empty-description">
+                        Intenta buscar con otro nombre o descripción.
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                treatments.map((treatment) => (
+                paginatedTreatments.map((treatment) => (
                   <tr key={treatment.id}>
-
-                    {/* Treatment */}
                     <td>
-                      <p className="treatments__name">
-                        {treatment.name}
-                      </p>
+                      <div className="treatments__info">
+                        <p className="treatments__name">
+                          {treatment.name}
+                        </p>
 
-                      <p className="treatments__detail">
-                        {treatment.description || "No description"}
-                      </p>
+                        <p className="treatments__detail">
+                          {treatment.description || "Sin descripción"}
+                        </p>
+                      </div>
                     </td>
 
-                    {/* Duration */}
                     <td>
                       <div className="treatments__duration">
                         <Clock size={16} />
@@ -259,36 +366,33 @@ export default function TreatmentsPage({
                       </div>
                     </td>
 
-                    {/* Price */}
                     <td>
                       <span className="treatments__price">
                         {formatPrice(treatment.price)}
                       </span>
                     </td>
 
-                    {/* Status */}
                     <td>
                       {treatment.is_active ? (
                         <span className="treatments__status treatments__status--active">
                           <CheckCircle size={13} />
-                          Active
+                          Activo
                         </span>
                       ) : (
                         <span className="treatments__status treatments__status--inactive">
                           <XCircle size={13} />
-                          Inactive
+                          Inactivo
                         </span>
                       )}
                     </td>
 
-                    {/* Actions */}
                     <td>
                       <div className="treatments__actions">
                         <button
                           type="button"
                           onClick={() => openEditModal(treatment)}
-                          title="Edit treatment"
-                          className="treatments__action treatments__action--edit"
+                          title="Editar tratamiento"
+                          className="treatments__action_edit_button"
                         >
                           <Pencil size={16} />
                         </button>
@@ -299,8 +403,8 @@ export default function TreatmentsPage({
                           disabled={
                             deletingId === treatment.id || deleting
                           }
-                          title="Delete treatment"
-                          className="treatments__action treatments__action--delete"
+                          title="Eliminar tratamiento"
+                          className="treatments__action_delete_button"
                         >
                           {deletingId === treatment.id ? (
                             <Loader2 size={16} />
@@ -310,7 +414,6 @@ export default function TreatmentsPage({
                         </button>
                       </div>
                     </td>
-
                   </tr>
                 ))
               )}
@@ -318,15 +421,69 @@ export default function TreatmentsPage({
           </table>
         </div>
 
-        {/* Footer */}
-        {treatments.length > 0 && (
+        {/* Pagination Footer */}
+        {filteredTreatments.length > 0 && (
           <div className="treatments__footer">
             <p>
-              Showing {treatments.length} registered treatments
+              Mostrando{" "}
+              <strong>{startIndex + 1}</strong>
+              {" - "}
+              <strong>
+                {Math.min(
+                  startIndex + ITEMS_PER_PAGE,
+                  filteredTreatments.length
+                )}
+              </strong>
+              {" de "}
+              <strong>{filteredTreatments.length}</strong>
+              {" tratamientos"}
             </p>
+
+            {totalPages > 1 && (
+              <div className="treatments__pagination">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  disabled={currentPage === 1}
+                  className="treatments__page-btn"
+                  aria-label="Página anterior"
+                >
+                  <ChevronLeft size={17} />
+                </button>
+
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) => index + 1
+                ).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`treatments__page-btn ${
+                      currentPage === page
+                        ? "treatments__page-btn--active"
+                        : ""
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  disabled={currentPage === totalPages}
+                  className="treatments__page-btn"
+                  aria-label="Página siguiente"
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
+
 
       {/* Edit Modal */}
       {isModalOpen && selectedTreatment && (

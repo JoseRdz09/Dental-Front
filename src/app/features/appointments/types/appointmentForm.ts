@@ -16,3 +16,17 @@ export interface AppointmentFormValues {
 
   status: AppointmentStatus;
 }
+
+interface ApiErrorResponse {
+  message?: string;
+  errors?: Record<string, string[] | string>;
+}
+
+
+export interface ApiError {
+  response?: {
+    status?: number;
+    data?: ApiErrorResponse;
+  };
+  message?: string;
+}

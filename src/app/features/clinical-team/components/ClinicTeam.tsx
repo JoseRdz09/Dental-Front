@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 import { useClinicTeam } from "../hooks/useClinicTeam";
 import { deleteClinicTeamMember } from "../services/clinicTeamServices";
 
@@ -70,7 +71,6 @@ export default function ClinicTeam() {
 
     try {
       await deleteClinicTeamMember(
-        
         deletingMember.user_id
       );
 
@@ -135,13 +135,9 @@ export default function ClinicTeam() {
     };
   }, []);
 
-  // Estado de carga de autenticación.
+  // Estado de carga.
   if (clinicsLoading) {
-    return (
-      <div className="clinic-team__state">
-        Cargando clínicas...
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   // No hay clínicas disponibles.
@@ -156,9 +152,10 @@ export default function ClinicTeam() {
   return (
     <section className="clinic-team">
 
-      {/* Encabezado: selector de clínica y botón para agregar */}
-      <div className="clinic-team__header">
+      {/* Barra superior independiente */}
+      <div className="clinic-team__toolbar">
 
+        {/* Selector de clínicas */}
         <div
           className="clinic-team__selector"
           ref={dropdownRef}
@@ -201,6 +198,7 @@ export default function ClinicTeam() {
             />
           </button>
 
+          {/* Opciones del selector */}
           {isOpen && (
             <div
               className="clinic-team__dropdown"
@@ -210,8 +208,7 @@ export default function ClinicTeam() {
               <div className="clinic-team__dropdown-list">
 
                 {clinics.map((item) => {
-                  const selected =
-                    item.id === clinicId;
+                  const selected = item.id === clinicId;
 
                   return (
                     <button
@@ -254,7 +251,8 @@ export default function ClinicTeam() {
           )}
         </div>
 
-        <div className="clinic-team__actions">
+        {/* Acción independiente: agregar integrante */}
+        <div className="clinic-team__add-action">
           <button
             type="button"
             className="clinic-team__add-button"

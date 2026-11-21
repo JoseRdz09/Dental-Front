@@ -1,12 +1,15 @@
 
-/* Selector de clínicas */
+/* ==========================================
+   SELECTOR DE CLÍNICAS
+========================================== */
 
 .clinic-team__selector {
   position: relative;
   z-index: 5;
   width: 100%;
   max-width: 420px;
-  margin-bottom: 24px;
+  margin-bottom: 0;
+  box-sizing: border-box;
 }
 
 .clinic-team__selector-label {
@@ -33,6 +36,7 @@
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
+  box-sizing: border-box;
 }
 
 .clinic-team__selector-trigger:hover {
@@ -92,13 +96,16 @@
   transform: rotate(180deg);
 }
 
-/* Menú desplegable */
+/* ==========================================
+   MENÚ DESPLEGABLE
+========================================== */
 
 .clinic-team__dropdown {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   left: 0;
+  z-index: 20;
   overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -173,7 +180,7 @@
 }
 
 .clinic-team__dropdown-option.is-selected
-  .clinic-team__dropdown-icon {
+.clinic-team__dropdown-icon {
   background: #dbeafe;
   color: #2563eb;
 }
@@ -191,94 +198,76 @@
   color: #2563eb;
 }
 
-/* Botón para editar integrante */
-.clinic-team__edit-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 9px 13px;
+/* ==========================================
+   BARRA SUPERIOR
+   SELECTOR IZQUIERDA - BOTÓN DERECHA
+========================================== */
 
-  border: 1px solid #dbeafe;
-  border-radius: 10px;
-
-  background: #eff6ff;
-  color: #2563eb;
-
-  font-size: 13px;
-  font-weight: 600;
-
-  cursor: pointer;
-
-  transition:
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.clinic-team__edit-button:hover {
-  border-color: #bfdbfe;
-  background: #dbeafe;
-  box-shadow: 0 2px 6px rgb(37 99 235 / 8%);
-}
-
-.clinic-team__edit-button:active {
-  transform: scale(0.97);
-}
-
-.clinic-team__edit-button:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
-
-.clinic-team__edit-button svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-
-/* Contenedor de acciones */
-.clinic-team__actions {
+.clinic-team__toolbar {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
   width: 100%;
   margin-bottom: 20px;
+  box-sizing: border-box;
 }
 
-/* Botón para agregar integrantes */
+/* ==========================================
+   CONTENEDOR DEL SELECTOR
+========================================== */
+
+.clinic-team__toolbar .clinic-team__selector {
+  flex: 0 1 420px;
+  width: 100%;
+  max-width: 420px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+/* ==========================================
+   CONTENEDOR BOTÓN AGREGAR
+========================================== */
+
+.clinic-team__add-action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+}
+
+/* ==========================================
+   BOTÓN AGREGAR INTEGRANTE
+========================================== */
+
 .clinic-team__add-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 9px;
-
   min-height: 44px;
+  max-width: 100%;
   padding: 11px 16px;
-
   border: 1px solid #2563eb;
   border-radius: 10px;
-
   background: #2563eb;
   color: #ffffff;
-
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.1px;
-
+  white-space: nowrap;
   cursor: pointer;
-
   box-shadow: 0 2px 5px rgb(37 99 235 / 15%);
-
   transition:
     background-color 0.2s ease,
     border-color 0.2s ease,
     box-shadow 0.2s ease,
     transform 0.2s ease;
+  box-sizing: border-box;
 }
 
 .clinic-team__add-button svg {
@@ -310,7 +299,70 @@
   opacity: 0.8;
 }
 
-/* Botón para eliminar integrantes */
+/* ==========================================
+   BOTÓN EDITAR INTEGRANTE
+========================================== */
+
+.clinic-team__edit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.clinic-team__edit-button:hover {
+  border-color: #bfdbfe;
+  background: #dbeafe;
+  box-shadow: 0 2px 6px rgb(37 99 235 / 8%);
+}
+
+.clinic-team__edit-button:active {
+  transform: scale(0.97);
+}
+
+.clinic-team__edit-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.clinic-team__edit-button svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   ACCIONES DE LA TABLA
+========================================== */
+
+.clinic-team__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ==========================================
+   BOTÓN ELIMINAR INTEGRANTE
+========================================== */
+
 .clinic-team__delete-button {
   display: inline-flex;
   align-items: center;
@@ -346,18 +398,9 @@
   cursor: not-allowed;
 }
 
-@media (max-width: 480px) {
-  .clinic-team__actions {
-    justify-content: stretch;
-  }
-
-  .clinic-team__add-button {
-    width: 100%;
-  }
-}
-
-
-/* Animación */
+/* ==========================================
+   ANIMACIÓN
+========================================== */
 
 @keyframes clinic-team-dropdown-in {
   from {
@@ -371,13 +414,11 @@
   }
 }
 
-/* Responsive */
+/* ==========================================
+   RESPONSIVE TABLET Y MÓVIL
+========================================== */
 
 @media (max-width: 640px) {
-  .clinic-team__selector {
-    max-width: none;
-  }
-
   .clinic-team__selector-trigger {
     min-height: 64px;
   }
@@ -385,7 +426,51 @@
   .clinic-team__dropdown-list {
     max-height: 220px;
   }
+
+  .clinic-team__toolbar {
+    gap: 10px;
+  }
+
+  .clinic-team__toolbar .clinic-team__selector {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .clinic-team__add-action .clinic-team__add-button {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
 }
+
+/* ==========================================
+   RESPONSIVE PANTALLAS PEQUEÑAS
+========================================== */
+
+@media (max-width: 380px) {
+  .clinic-team__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clinic-team__toolbar .clinic-team__selector {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .clinic-team__add-action {
+    width: 100%;
+  }
+
+  .clinic-team__add-action .clinic-team__add-button {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
+/* ==========================================
+   ACCESIBILIDAD
+========================================== */
 
 @media (prefers-reduced-motion: reduce) {
   .clinic-team__selector *,

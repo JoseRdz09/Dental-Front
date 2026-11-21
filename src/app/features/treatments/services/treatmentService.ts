@@ -6,6 +6,7 @@ import type {
   TreatmentsResponse,
   TreatmentResponse,
   UpdateTreatmentPayload,
+  CreateTreatmentPayload,
   ApiErrorResponse,
 } from "../types/treatment";
 
@@ -47,6 +48,29 @@ export async function updateTreatment(
       throw new Error(
         error.response?.data?.message ||
         "Error updating treatment."
+      );
+    }
+
+    throw error;
+  }
+}
+
+export async function createTreatment(
+  clinicId: number,
+  payload: CreateTreatmentPayload
+): Promise<TreatmentResponse> {
+  try {
+    const { data } = await api.post<TreatmentResponse>(
+      `/api/clinics/${clinicId}/treatments`,
+      payload
+    );
+
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorResponse>(error)) {
+      throw new Error(
+        error.response?.data?.message ||
+          "Error creating treatment."
       );
     }
 

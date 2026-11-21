@@ -95,7 +95,7 @@
   height: 42px;
   border-radius: 11px;
   background: var(--settings-icon-bg, #f1f5f9);
-  color: var(--settings-icon, #475569);
+  color: var(--settings-icon, #2563eb );
 }
 
 .settings-tabs__icon svg,

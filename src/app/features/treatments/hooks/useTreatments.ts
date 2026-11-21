@@ -7,11 +7,13 @@ import {
 
 import {
   getTreatments,
+  createTreatment,
   updateTreatment,
   deleteTreatment,
 } from "../services/treatmentService";
 
 import type {
+  CreateTreatmentPayload,
   UpdateTreatmentPayload,
 } from "../types/treatment";
 
@@ -34,6 +36,18 @@ export function useTreatments(clinicId: number) {
     queryFn: () => getTreatments(clinicId),
     enabled: clinicId > 0,
     staleTime: 5 * 60 * 1000,
+  });
+
+  // CREATE treatment
+  const createMutation = useMutation({
+    mutationFn: (payload: CreateTreatmentPayload) =>
+      createTreatment(clinicId, payload),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey,
+      });
+    },
   });
 
   // UPDATE treatment
@@ -74,9 +88,11 @@ export function useTreatments(clinicId: number) {
 
     reloadTreatments: refetch,
 
+    createTreatment: createMutation.mutateAsync,
     updateTreatment: updateMutation.mutateAsync,
     deleteTreatment: deleteMutation.mutateAsync,
 
+    creating: createMutation.isPending,
     updating: updateMutation.isPending,
     deleting: deleteMutation.isPending,
   };

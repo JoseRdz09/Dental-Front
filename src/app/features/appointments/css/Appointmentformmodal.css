@@ -159,14 +159,47 @@
    MENSAJES Y BOTONES
 ================================= */
 
+
 .appt-modal__error {
-  margin: 0;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 15px;
+  margin: 10px 0;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
   font-size: 13px;
-  color: #8a1c1c;
-  background: #fde4e4;
-  border-radius: 8px;
+  line-height: 1.5;
+  white-space: pre-line;
 }
+
+.appt-modal__error-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+}
+
+.appt-modal__error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.appt-modal__error p {
+  margin: 0;
+  padding-left: 29px;
+}
+
 
 .appt-modal__actions {
   display: flex;

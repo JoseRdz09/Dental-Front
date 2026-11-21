@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { STATUS_OPTIONS } from "../constants/Appointmentstatus";
-import type { AppointmentFormValues } from "../types/appointmentForm";
+
+import type {
+  AppointmentFormValues,
+  ApiError,
+} from "../types/appointmentForm";
 
 import type {
   ApiAppointmentOptions,
@@ -18,6 +22,77 @@ interface Props {
   onSubmit: (values: AppointmentFormValues) => Promise<void> | void;
   onClose: () => void;
 }
+
+const FIELD_LABELS: Record<string, string> = {
+  patient_id: "Paciente",
+  treatment_id: "Tratamiento",
+  dentist_user_id: "Dentista",
+  clinic_id: "Clínica",
+  start_at: "Hora de inicio",
+  end_at: "Hora de finalización",
+  status: "Estado",
+  title: "Título",
+  notes: "Detalles",
+  treatment_price: "Precio del tratamiento",
+};
+
+// Obtener mensajes de errores del backend
+const getAppointmentError = (err: unknown): string => {
+  const error = err as ApiError;
+
+  const status = error.response?.status;
+  const data = error.response?.data;
+
+  if (status === 422) {
+    if (data?.errors) {
+      const messages = Object.entries(data.errors).flatMap(
+        ([field, fieldMessages]) => {
+          const label = FIELD_LABELS[field] ?? field;
+
+          const normalizedMessages = Array.isArray(fieldMessages)
+            ? fieldMessages
+            : [fieldMessages];
+
+          return normalizedMessages.map(
+            (message) => `${label}: ${message}`
+          );
+        }
+      );
+
+      return messages.length > 0
+        ? messages.join("\n")
+        : data.message ?? "Revisa los datos de la cita.";
+    }
+
+    return data?.message ?? "Los datos enviados no son válidos.";
+  }
+
+  if (status === 401) {
+    return "Tu sesión ha expirado. Inicia sesión nuevamente.";
+  }
+
+  if (status === 403) {
+    return "No tienes permisos para realizar esta operación.";
+  }
+
+  if (status === 404) {
+    return "No se encontró la cita o alguno de los recursos seleccionados.";
+  }
+
+  if (status === 409) {
+    return "Existe un conflicto con el horario seleccionado.";
+  }
+
+  if (status && status >= 500) {
+    return "Ocurrió un error en el servidor. Inténtalo nuevamente.";
+  }
+
+  return (
+    data?.message ??
+    error.message ??
+    "No se pudo guardar la cita. Inténtalo nuevamente."
+  );
+};
 
 // Obtener fecha local YYYY-MM-DD
 const getLocalDate = (date: Date): string => {
@@ -37,12 +112,6 @@ const getLocalTime = (date: Date): string => {
 };
 
 // Obtener el siguiente múltiplo de 5 estrictamente posterior
-// a la hora actual.
-//
-// 10:37 -> 10:40
-// 10:40 -> 10:45
-// 10:43 -> 10:45
-// 10:55 -> 11:00
 const getNextFiveMinuteSlot = (date: Date): Date => {
   const next = new Date(date);
 
@@ -57,11 +126,7 @@ const getNextFiveMinuteSlot = (date: Date): Date => {
   return next;
 };
 
-// Obtener el siguiente múltiplo de 5 posterior a una hora.
-// Se utiliza para calcular la hora mínima de finalización.
-//
-// 10:37 -> 10:40
-// 10:40 -> 10:45
+// Obtener el siguiente múltiplo de 5 posterior a una hora
 const getNextFiveMinuteTime = (time: string): string => {
   if (!time) return "00:00";
 
@@ -76,7 +141,7 @@ const getNextFiveMinuteTime = (time: string): string => {
   const normalizedMinutes = nextMinutes % 60;
 
   return `${String(normalizedHours).padStart(2, "0")}:${String(
-    normalizedMinutes,
+    normalizedMinutes
   ).padStart(2, "0")}`;
 };
 
@@ -92,10 +157,18 @@ const isFiveMinuteInterval = (time: string): boolean => {
 // Convertir fecha y hora local a Date
 const getSelectedDateTime = (
   date: string,
-  time: string,
+  time: string
 ): Date => {
   return new Date(`${date}T${time}:00`);
 };
+
+// Normalizar texto para búsquedas sin acentos
+const normalizeText = (text: string): string =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 export default function AppointmentFormModal({
   mode,
@@ -106,27 +179,102 @@ export default function AppointmentFormModal({
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const [values, setValues] = useState<AppointmentFormValues>(
-    initialValues,
-  );
+  const [values, setValues] = useState<AppointmentFormValues>({
+    ...initialValues,
+    patientId:
+      initialValues.patientId == null
+        ? null
+        : Number(initialValues.patientId),
+    treatmentId:
+      initialValues.treatmentId == null
+        ? null
+        : Number(initialValues.treatmentId),
+    dentistUserId:
+      initialValues.dentistUserId == null
+        ? null
+        : Number(initialValues.dentistUserId),
+  });
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Mantener actualizada la hora mientras el modal está abierto.
   const [now, setNow] = useState(() => new Date());
+
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showPatientResults, setShowPatientResults] = useState(false);
+
+  // ==========================================
+  // SINCRONIZAR LOS VALORES DEL FORMULARIO
+  // ==========================================
+
+  useEffect(() => {
+    setValues({
+      ...initialValues,
+      patientId:
+        initialValues.patientId == null
+          ? null
+          : Number(initialValues.patientId),
+      treatmentId:
+        initialValues.treatmentId == null
+          ? null
+          : Number(initialValues.treatmentId),
+      dentistUserId:
+        initialValues.dentistUserId == null
+          ? null
+          : Number(initialValues.dentistUserId),
+    });
+
+    setError(null);
+    setShowPatientResults(false);
+  }, [
+    initialValues.patientId,
+    initialValues.treatmentId,
+    initialValues.dentistUserId,
+    initialValues.date,
+    initialValues.startTime,
+    initialValues.endTime,
+    initialValues.status,
+    initialValues.details,
+  ]);
+
+  // ==========================================
+  // CARGAR NOMBRE DEL PACIENTE AL EDITAR
+  // ==========================================
+
+  useEffect(() => {
+    if (initialValues.patientId == null) {
+      setPatientSearch("");
+      return;
+    }
+
+    const selectedPatient = options.patients.find(
+      (patient) =>
+        Number(patient.id) === Number(initialValues.patientId)
+    );
+
+    if (selectedPatient) {
+      setPatientSearch(
+        `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
+      );
+    }
+  }, [initialValues.patientId, options.patients]);
+
+  // ==========================================
+  // MANTENER ACTUALIZADA LA HORA
+  // ==========================================
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
     }, 15000);
 
-    return () => {
-      window.clearInterval(interval);
-    };
+    return () => window.clearInterval(interval);
   }, []);
 
-  // Abrir modal
+  // ==========================================
+  // ABRIR MODAL
+  // ==========================================
+
   useEffect(() => {
     const dialog = dialogRef.current;
 
@@ -135,52 +283,34 @@ export default function AppointmentFormModal({
     }
   }, []);
 
-  // Estados para busqueda de pacinetes
-  const [patientSearch, setPatientSearch] = useState("");
-  const [showPatientResults, setShowPatientResults] = useState(false);
-
-  const normalizeText = (text: string) =>
-  text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-
   // Fecha actual
   const today = getLocalDate(now);
 
-  // Comprobar si se conserva la fecha original.
+  // Comprobar si se conserva la fecha original
   const isOriginalDate =
     mode === "edit" &&
     values.date === initialValues.date;
 
-  // Comprobar si se conserva la hora original de inicio.
+  // Comprobar si se conserva la hora original de inicio
   const isOriginalStartTime =
     isOriginalDate &&
     values.startTime === initialValues.startTime;
 
-  // Comprobar si se conserva la hora original de finalización.
+  // Comprobar si se conserva la hora original de finalización
   const isOriginalEndTime =
     isOriginalDate &&
     values.endTime === initialValues.endTime;
 
-  // Comprobar si se conserva todo el horario original.
-  const isOriginalSchedule =
-    isOriginalStartTime && isOriginalEndTime;
-
-  // ¿La cita seleccionada corresponde a hoy?
+  // ¿La cita corresponde a hoy?
   const isToday = values.date === today;
 
-  // Calcular siguiente horario disponible.
+  // Calcular siguiente horario disponible
   const nextSlot = getNextFiveMinuteSlot(now);
 
   const nextSlotDate = getLocalDate(nextSlot);
   const nextSlotTime = getLocalTime(nextSlot);
 
-  // Fecha mínima:
-  // - Crear: hoy.
-  // - Editar una cita pasada conservando su fecha: fecha original.
-  // - Editar cambiando la fecha: hoy.
+  // Fecha mínima
   const minDate =
     mode === "edit" &&
     isOriginalDate &&
@@ -188,15 +318,7 @@ export default function AppointmentFormModal({
       ? initialValues.date
       : today;
 
-  // Hora mínima de inicio:
-  //
-  // Crear cita:
-  // - Hoy: siguiente múltiplo de 5 posterior a la hora actual.
-  // - Futuro: 00:00.
-  //
-  // Editar:
-  // - Si conserva la hora original, permitir visualizarla aunque haya pasado.
-  // - Si cambia la hora, aplicar las restricciones normales.
+  // Hora mínima de inicio
   const minStartTime = isOriginalStartTime
     ? "00:00"
     : isToday
@@ -205,27 +327,27 @@ export default function AppointmentFormModal({
         : undefined
       : "00:00";
 
-  // Determinar si ya no quedan horarios disponibles hoy.
-  // No bloquear cuando se está conservando el horario original.
+  // Determinar si ya no quedan horarios disponibles hoy
   const noMoreSlotsToday =
     isToday &&
     nextSlotDate !== today &&
     !isOriginalStartTime;
 
-  // La hora de finalización debe ser posterior al inicio.
-  // Se utiliza el siguiente múltiplo de 5 para no desplazar
-  // la referencia de step a un minuto distinto de múltiplo de 5.
+  // Hora mínima de finalización
   const minEndTime = values.startTime
     ? getNextFiveMinuteTime(values.startTime)
     : "00:00";
 
-  // Actualizar campos generales
+  // ==========================================
+  // ACTUALIZAR CAMPOS GENERALES
+  // ==========================================
+
   const setField =
     (field: keyof AppointmentFormValues) =>
     (
       e: ChangeEvent<
         HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      >,
+      >
     ) => {
       const value = e.target.value;
 
@@ -237,12 +359,11 @@ export default function AppointmentFormModal({
       setError(null);
     };
 
-  // Cambiar paciente
-  const handlePatientChange = (
-    e: ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const id = e.target.value;
+  // ==========================================
+  // CAMBIAR PACIENTE
+  // ==========================================
 
+  const handlePatientChange = (id: string) => {
     setValues((prev) => ({
       ...prev,
       patientId: id ? Number(id) : null,
@@ -251,9 +372,12 @@ export default function AppointmentFormModal({
     setError(null);
   };
 
-  // Cambiar tratamiento
+  // ==========================================
+  // CAMBIAR TRATAMIENTO
+  // ==========================================
+
   const handleTreatmentChange = (
-    e: ChangeEvent<HTMLSelectElement>,
+    e: ChangeEvent<HTMLSelectElement>
   ) => {
     const id = e.target.value;
 
@@ -265,9 +389,12 @@ export default function AppointmentFormModal({
     setError(null);
   };
 
-  // Cambiar dentista
+  // ==========================================
+  // CAMBIAR DENTISTA
+  // ==========================================
+
   const handleDentistChange = (
-    e: ChangeEvent<HTMLSelectElement>,
+    e: ChangeEvent<HTMLSelectElement>
   ) => {
     const id = e.target.value;
 
@@ -279,9 +406,12 @@ export default function AppointmentFormModal({
     setError(null);
   };
 
-  // Cambiar fecha
+  // ==========================================
+  // CAMBIAR FECHA
+  // ==========================================
+
   const handleDateChange = (
-    e: ChangeEvent<HTMLInputElement>,
+    e: ChangeEvent<HTMLInputElement>
   ) => {
     const date = e.target.value;
 
@@ -290,7 +420,6 @@ export default function AppointmentFormModal({
       let endTime = prev.endTime;
 
       const currentNow = new Date();
-
       const currentToday = getLocalDate(currentNow);
 
       const currentNextSlot =
@@ -299,7 +428,6 @@ export default function AppointmentFormModal({
       const currentNextDate = getLocalDate(currentNextSlot);
       const currentNextTime = getLocalTime(currentNextSlot);
 
-      // Si cambia a hoy, comprobar que el horario sea futuro.
       if (date === currentToday) {
         if (
           currentNextDate !== currentToday ||
@@ -322,17 +450,18 @@ export default function AppointmentFormModal({
     setError(null);
   };
 
-  // Cambiar hora de inicio
+  // ==========================================
+  // CAMBIAR HORA DE INICIO
+  // ==========================================
+
   const handleStartTimeChange = (
-    e: ChangeEvent<HTMLInputElement>,
+    e: ChangeEvent<HTMLInputElement>
   ) => {
     const startTime = e.target.value;
 
     setValues((prev) => ({
       ...prev,
       startTime,
-
-      // Si la hora final ya no es posterior, limpiarla.
       endTime:
         prev.endTime && prev.endTime > startTime
           ? prev.endTime
@@ -342,9 +471,12 @@ export default function AppointmentFormModal({
     setError(null);
   };
 
-  // Enviar formulario
+  // ==========================================
+  // ENVIAR FORMULARIO
+  // ==========================================
+
   const handleSubmit = async (
-    e: FormEvent<HTMLFormElement>,
+    e: FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
 
@@ -353,17 +485,14 @@ export default function AppointmentFormModal({
     const submitNow = new Date();
     const submitToday = getLocalDate(submitNow);
 
-    // Comprobar si se conserva la fecha original.
     const keepingOriginalDate =
       mode === "edit" &&
       values.date === initialValues.date;
 
-    // Comprobar si se conserva la hora original de inicio.
     const keepingOriginalStart =
       keepingOriginalDate &&
       values.startTime === initialValues.startTime;
 
-    // Comprobar si se conserva la hora original de finalización.
     const keepingOriginalEnd =
       keepingOriginalDate &&
       values.endTime === initialValues.endTime;
@@ -374,13 +503,13 @@ export default function AppointmentFormModal({
       return;
     }
 
-    // No permitir fechas pasadas al crear.
-    // En edición se permite conservar la fecha original.
     if (
       values.date < submitToday &&
       !keepingOriginalDate
     ) {
-      setError("No puedes agendar o reprogramar citas en días pasados.");
+      setError(
+        "No puedes agendar o reprogramar citas en días pasados."
+      );
       return;
     }
 
@@ -408,14 +537,13 @@ export default function AppointmentFormModal({
       return;
     }
 
-    // Validar múltiplos de 5.
-    // Si se conserva la hora original, no se obliga a modificarla.
+    // Validar múltiplos de 5
     if (
       !keepingOriginalStart &&
       !isFiveMinuteInterval(values.startTime)
     ) {
       setError(
-        "La hora de inicio debe avanzar en intervalos de 5 minutos.",
+        "La hora de inicio debe avanzar en intervalos de 5 minutos."
       );
       return;
     }
@@ -425,34 +553,33 @@ export default function AppointmentFormModal({
       !isFiveMinuteInterval(values.endTime)
     ) {
       setError(
-        "La hora de finalización debe avanzar en intervalos de 5 minutos.",
+        "La hora de finalización debe avanzar en intervalos de 5 minutos."
       );
       return;
     }
 
-    // Validar que la hora de inicio sea futura.
-    // Se omite únicamente cuando se conserva la hora original.
+    // Validar que la hora de inicio sea futura
     if (
       values.date === submitToday &&
       !keepingOriginalStart
     ) {
       const selectedStart = getSelectedDateTime(
         values.date,
-        values.startTime,
+        values.startTime
       );
 
       if (selectedStart <= submitNow) {
         setError(
-          "La hora de inicio debe ser posterior a la hora actual.",
+          "La hora de inicio debe ser posterior a la hora actual."
         );
         return;
       }
     }
 
-    // Validar que la hora final sea posterior al inicio.
+    // Validar hora final
     if (values.endTime <= values.startTime) {
       setError(
-        "La hora de fin debe ser posterior a la de inicio.",
+        "La hora de finalización debe ser posterior a la hora de inicio."
       );
       return;
     }
@@ -463,20 +590,59 @@ export default function AppointmentFormModal({
 
       await onSubmit({
         ...values,
+        patientId: Number(values.patientId),
+        treatmentId: Number(values.treatmentId),
+        dentistUserId:
+          values.dentistUserId == null
+            ? null
+            : Number(values.dentistUserId),
         details: values.details.trim(),
       });
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error al guardar la cita:", err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo guardar la cita. Inténtalo de nuevo.",
-      );
+      setError(getAppointmentError(err));
     } finally {
       setSaving(false);
     }
   };
+
+  // ==========================================
+  // PACIENTES FILTRADOS
+  // ==========================================
+
+  const filteredPatients = options.patients
+    .filter((patient) =>
+      normalizeText(
+        `${patient.first_name} ${patient.last_name}`
+      ).includes(normalizeText(patientSearch))
+    )
+    .slice(0, 10);
+
+  // ==========================================
+  // TRATAMIENTOS DISPONIBLES
+  // ==========================================
+
+  const selectedInactiveTreatment =
+    mode === "edit"
+      ? options.treatments.find(
+          (treatment) =>
+            Number(treatment.id) === Number(values.treatmentId) &&
+            treatment.is_active === false
+        )
+      : undefined;
+
+  const availableTreatments = [
+    ...options.treatments.filter(
+      (treatment) => treatment.is_active === true
+    ),
+    ...(selectedInactiveTreatment ? [selectedInactiveTreatment] : []),
+  ];
+
+
+  // ==========================================
+  // RENDER
+  // ==========================================
 
   return (
     <dialog
@@ -509,7 +675,11 @@ export default function AppointmentFormModal({
           <div
             className="patient-search"
             onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              if (
+                !e.currentTarget.contains(
+                  e.relatedTarget as Node | null
+                )
+              ) {
                 setShowPatientResults(false);
               }
             }}
@@ -521,6 +691,15 @@ export default function AppointmentFormModal({
               onChange={(e) => {
                 setPatientSearch(e.target.value);
                 setShowPatientResults(true);
+
+                // Al modificar la búsqueda, se invalida
+                // la selección anterior.
+                setValues((prev) => ({
+                  ...prev,
+                  patientId: null,
+                }));
+
+                setError(null);
               }}
               onFocus={() => {
                 if (patientSearch.trim()) {
@@ -531,22 +710,17 @@ export default function AppointmentFormModal({
               autoComplete="off"
             />
 
-            {showPatientResults && patientSearch.trim() !== "" && (
-              <div className="patient-search-results">
-                {options.patients
-                  .filter((patient) =>
-                    normalizeText(`${patient.first_name} ${patient.last_name}`)
-                      .includes(normalizeText(patientSearch))
-                  )
-                  .slice(0, 10)
-                  .map((patient) => (
+            {showPatientResults &&
+              patientSearch.trim() !== "" && (
+                <div className="patient-search-results">
+                  {filteredPatients.map((patient) => (
                     <button
                       key={patient.id}
                       type="button"
                       onClick={() => {
-                        handlePatientChange({
-                          target: { value: String(patient.id) },
-                        } as React.ChangeEvent<HTMLSelectElement>);
+                        handlePatientChange(
+                          String(patient.id)
+                        );
 
                         setPatientSearch(
                           `${patient.first_name} ${patient.last_name}`
@@ -559,16 +733,13 @@ export default function AppointmentFormModal({
                     </button>
                   ))}
 
-                {options.patients.filter((patient) =>
-                  normalizeText(`${patient.first_name} ${patient.last_name}`)
-                    .includes(normalizeText(patientSearch))
-                ).length === 0 && (
-                  <div className="patient-search-results__empty">
-                    No se encontraron pacientes.
-                  </div>
-                )}
-              </div>
-            )}
+                  {filteredPatients.length === 0 && (
+                    <div className="patient-search-results__empty">
+                      No se encontraron pacientes.
+                    </div>
+                  )}
+                </div>
+              )}
           </div>
         </label>
 
@@ -581,11 +752,20 @@ export default function AppointmentFormModal({
             onChange={handleTreatmentChange}
             required
           >
-            <option value="">Selecciona un tratamiento</option>
+            <option value="">
+              Selecciona un tratamiento
+            </option>
 
-            {options.treatments.map((treatment) => (
-              <option key={treatment.id} value={treatment.id}>
-                {treatment.name} — $
+            {availableTreatments.map((treatment) => (
+              <option
+                key={treatment.id}
+                value={treatment.id}
+              >
+                {treatment.name}
+                {treatment.is_active === false
+                  ? " (Inactivo - Tratamiento actual)"
+                  : ""}
+                {" — $"}
                 {Number(treatment.price).toFixed(2)}
               </option>
             ))}
@@ -603,7 +783,10 @@ export default function AppointmentFormModal({
             <option value="">Sin asignar</option>
 
             {options.dentists.map((dentist) => (
-              <option key={dentist.id} value={dentist.id}>
+              <option
+                key={dentist.id}
+                value={dentist.id}
+              >
                 {dentist.name}
               </option>
             ))}
@@ -612,7 +795,6 @@ export default function AppointmentFormModal({
 
         {/* FECHA Y HORARIO */}
         <div className="appt-row">
-          {/* FECHA */}
           <label className="appt-field">
             <span>Fecha</span>
 
@@ -625,7 +807,6 @@ export default function AppointmentFormModal({
             />
           </label>
 
-          {/* HORA DE INICIO */}
           <label className="appt-field">
             <span>Inicio</span>
 
@@ -640,7 +821,6 @@ export default function AppointmentFormModal({
             />
           </label>
 
-          {/* HORA DE FINALIZACIÓN */}
           <label className="appt-field">
             <span>Fin</span>
 
@@ -658,7 +838,8 @@ export default function AppointmentFormModal({
 
         {noMoreSlotsToday && (
           <p className="appt-modal__error" role="status">
-            Ya no hay horarios disponibles para hoy. Selecciona otro día.
+            Ya no hay horarios disponibles para hoy.
+            Selecciona otro día.
           </p>
         )}
 
@@ -691,9 +872,23 @@ export default function AppointmentFormModal({
 
         {/* ERROR */}
         {error && (
-          <p className="appt-modal__error" role="alert">
-            {error}
-          </p>
+          <div
+            className="appt-modal__error"
+            role="alert"
+            aria-live="assertive"
+          >
+            <div className="appt-modal__error-header">
+              <span className="appt-modal__error-icon">
+                !
+              </span>
+
+              <strong>
+                No se pudo guardar la cita
+              </strong>
+            </div>
+
+            <p>{error}</p>
+          </div>
         )}
 
         {/* BOTONES */}

@@ -1,136 +1,118 @@
-import { useState } from "react";
 
-import AppointmentCalendar from "../../appointments/components/AppoinmentCalendar";
-import AppointmentFormModal from "../../appointments/components/Appointmentformmodal";
-import type { AppointmentFormValues } from "../../appointments/types/appointmentForm";
-import { useAppointments } from "../../appointments/hooks/useAppointments";
+import { useMemo, useState } from "react";
+
+import DashboardHeader from "../components/DashboardHeader";
+import DashboardFilters from "../components/DashboardFilters";
+import DashboardStats from "../components/DashboardStats";
+import DashboardSalesCard from "../components/DashboardSalesCard";
+import DashboardPerformance from "../components/DashboardPerformance";
+import DashboardTeamCard from "../components/DashboardTeamCard";
+
 import {
-  appointmentToFormValues,
-  slotToFormValues,
-} from "../../appointments/utils/Datetime";
+  DASHBOARD_CLINICS,
+  DASHBOARD_TEAM,
+} from "../data/dashboardMockData";
 
-interface ModalState {
-  mode: "create" | "edit";
-  values: AppointmentFormValues;
-}
+import type {
+  DashboardPeriod,
+  DashboardStatsData,
+} from "../types/dashboard";
 
-export default function OwnerDashboard() {
-  const {
-    appointments,
-    options,
-    loading,
-    error,
-    reloadAppointments,
-    saveAppointment,
-    moveAppointment,
-  } = useAppointments();
+import "../css/DashboardPage.css";
 
-  const [modal, setModal] = useState<ModalState | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+const DashboardPage = () => {
+  const [clinicId, setClinicId] = useState<number | null>(null);
+  const [period, setPeriod] = useState<DashboardPeriod>("month");
 
-  const closeModal = () => {
-    if (!saving) {
-      setModal(null);
-      setActionError(null);
+  const selectedClinic = useMemo(
+    () => DASHBOARD_CLINICS.find((clinic) => clinic.id === clinicId),
+    [clinicId]
+  );
+
+  const stats = useMemo<DashboardStatsData>(() => {
+    if (selectedClinic) {
+      return selectedClinic.stats;
     }
-  };
 
-  const handleSubmit = async (values: AppointmentFormValues) => {
-    setSaving(true);
-    setActionError(null);
-
-    try {
-      await saveAppointment(values);
-      setModal(null);
-    } catch (err) {
-      console.error("Error al guardar la cita:", err);
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo guardar la cita. Intenta nuevamente.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleMoveAppointment = async (
-    appointmentId: string,
-    range: { start: string; end: string },
-  ): Promise<boolean> => {
-    setActionError(null);
-
-    try {
-      const ok = await moveAppointment(appointmentId, range);
-
-      if (!ok) {
-        setActionError("No se pudo mover la cita.");
+    const totals = DASHBOARD_CLINICS.reduce(
+      (acc, clinic) => ({
+        monthlyIncome:
+          acc.monthlyIncome + clinic.stats.monthlyIncome,
+        confirmedAppointments:
+          acc.confirmedAppointments +
+          clinic.stats.confirmedAppointments,
+        pendingAppointments:
+          acc.pendingAppointments +
+          clinic.stats.pendingAppointments,
+        dailySales:
+          acc.dailySales + clinic.stats.dailySales,
+        completedAppointments:
+          acc.completedAppointments +
+          clinic.stats.completedAppointments,
+        activeTeamMembers:
+          acc.activeTeamMembers +
+          clinic.stats.activeTeamMembers,
+      }),
+      {
+        monthlyIncome: 0,
+        confirmedAppointments: 0,
+        pendingAppointments: 0,
+        dailySales: 0,
+        completedAppointments: 0,
+        activeTeamMembers: 0,
       }
-
-      return ok;
-    } catch (err) {
-      console.error("Error al mover la cita:", err);
-      setActionError("No se pudo mover la cita.");
-      return false;
-    }
-  };
-
-  if (loading && appointments.length === 0 && !error) {
-    return <p>Cargando citas...</p>;
-  }
-
-  if (error && appointments.length === 0) {
-    return (
-      <div>
-        <p>{error}</p>
-
-        <button
-          type="button"
-          onClick={() => void reloadAppointments()}
-        >
-          Reintentar
-        </button>
-      </div>
     );
-  }
+
+    const performance =
+      totals.confirmedAppointments > 0
+        ? Math.round(
+            (totals.completedAppointments /
+              totals.confirmedAppointments) *
+              100
+          )
+        : 0;
+
+    return {
+      ...totals,
+      performance,
+    };
+  }, [selectedClinic]);
+
+  const team = clinicId !== null
+    ? DASHBOARD_TEAM[clinicId] ?? []
+    : [];
 
   return (
-    <>
-      {actionError && <p role="alert">{actionError}</p>}
+    <main className="dashboard-page">
+      <DashboardHeader organizationName="Clínica Dental Norte" />
 
-      {loading && (
-        <p aria-live="polite">Actualizando...</p>
-      )}
-
-      <AppointmentCalendar
-        appointments={appointments}
-        onSelectAppointment={(appointment) =>
-          setModal({
-            mode: "edit",
-            values: appointmentToFormValues(appointment),
-          })
-        }
-        onSlotClick={(dateStr, allDay) =>
-          setModal({
-            mode: "create",
-            values: slotToFormValues(dateStr, allDay),
-          })
-        }
-        onMoveAppointment={(appointment, range) =>
-          handleMoveAppointment(String(appointment.id), range)
-        }
-      />
-
-      {modal && (
-        <AppointmentFormModal
-          mode={modal.mode}
-          initialValues={modal.values}
-          options={options}
-          onSubmit={handleSubmit}
-          onClose={closeModal}
+      <div className="dashboard-page__body">
+        <DashboardFilters
+          clinics={DASHBOARD_CLINICS}
+          clinicId={clinicId}
+          period={period}
+          onClinicChange={setClinicId}
+          onPeriodChange={setPeriod}
         />
-      )}
-    </>
+
+        <DashboardStats stats={stats} />
+
+        <section className="dashboard-page__bottom">
+          <DashboardPerformance stats={stats} />
+
+          <div className="dashboard-page__sidebar">
+            <DashboardSalesCard sales={stats.dailySales} />
+
+            <DashboardTeamCard
+              clinicId={clinicId}
+              clinics={DASHBOARD_CLINICS}
+              team={team}
+            />
+          </div>
+        </section>
+      </div>
+    </main>
   );
-}
+};
+
+export default DashboardPage;
