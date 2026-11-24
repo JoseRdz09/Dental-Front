@@ -46,7 +46,7 @@ import "../css/PatientsPage.css";
 
 type ModalMode = "create" | "view" | "edit";
 
-const PATIENTS_PER_PAGE = 15;
+const PATIENTS_PER_PAGE = 11;
 
 // Tiempo de vigencia de la información individual.
 const PATIENT_DETAIL_STALE_TIME = 1000 * 60 * 2;

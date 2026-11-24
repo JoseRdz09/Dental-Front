@@ -1,18 +1,13 @@
-
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { STATUS_OPTIONS } from "../constants/Appointmentstatus";
-
 import type {
   AppointmentFormValues,
+  AppointmentFormItem,
   ApiError,
 } from "../types/appointmentForm";
-
-import type {
-  ApiAppointmentOptions,
-} from "../services/appointmentService";
-
+import type { ApiAppointmentOptions } from "../services/appointmentService";
 import { usePatientSearch } from "../hooks/useAppointments";
 
 import "../css/Appointmentformmodal.css";
@@ -28,169 +23,148 @@ interface Props {
   onClose: () => void;
 }
 
+/* ==========================================
+   CONSTANTES
+========================================== */
+
+const SEARCH_DEBOUNCE = 300;
+const STEP = 5;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const FIELD_LABELS: Record<string, string> = {
   patient_id: "Paciente",
-  treatment_id: "Tratamiento",
   dentist_user_id: "Dentista",
   clinic_id: "Clínica",
   start_at: "Hora de inicio",
   end_at: "Hora de finalización",
   status: "Estado",
-  title: "Título",
   notes: "Detalles",
-  treatment_price: "Precio del tratamiento",
+  items: "Conceptos",
 };
 
-// ==========================================
-// OBTENER MENSAJES DE ERRORES DEL BACKEND
-// ==========================================
+const STATUS_MESSAGES: Record<number, string> = {
+  401: "Tu sesión ha expirado. Inicia sesión nuevamente.",
+  403: "No tienes permisos para realizar esta operación.",
+  404: "No se encontró la cita o alguno de los recursos seleccionados.",
+  409: "Existe un conflicto con el horario seleccionado.",
+};
+
+const ITEM_LABELS: Record<string, string> = {
+  treatment: "Tratamiento",
+  product: "Producto",
+  extra: "Cargo adicional",
+};
+
+/* ==========================================
+   UTILIDADES
+========================================== */
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const getLocalDate = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const getLocalTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+const getNextSlot = (d: Date) => {
+  const next = new Date(d);
+  const minutes = next.getHours() * 60 + next.getMinutes();
+  next.setHours(0, (Math.floor(minutes / STEP) + 1) * STEP, 0, 0);
+  return next;
+};
+
+const addStep = (time: string) => {
+  if (!TIME_RE.test(time)) return "00:00";
+  const [h, m] = time.split(":").map(Number);
+  const total = (Math.floor((h * 60 + m) / STEP) + 1) * STEP;
+  return `${pad(Math.floor(total / 60) % 24)}:${pad(total % 60)}`;
+};
+
+const isStepAligned = (time: string) =>
+  TIME_RE.test(time) && Number(time.slice(3)) % STEP === 0;
+
+const formatCurrency = (() => {
+  const f = new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+  });
+  return (n: number) => f.format(n);
+})();
+
+const normalizeValues = (v: AppointmentFormValues): AppointmentFormValues => ({
+  ...v,
+  patientId: v.patientId == null ? null : Number(v.patientId),
+  dentistUserId: v.dentistUserId == null ? null : Number(v.dentistUserId),
+  items: (v.items ?? []).map((item): AppointmentFormItem => {
+    const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+
+    return item.type === "treatment"
+      ? {
+          id: item.id,
+          type: "treatment",
+          treatmentId: Number(item.treatmentId),
+          quantity,
+        }
+      : {
+          id: item.id,
+          type: item.type,
+          description: item.description,
+          quantity,
+          unitPrice: Number(item.unitPrice),
+        };
+  }),
+});
 
 const getAppointmentError = (err: unknown): string => {
-  const error = err as ApiError;
+  const { response, message } = (
+    err && typeof err === "object" ? err : {}
+  ) as ApiError;
 
-  const status = error.response?.status;
-  const data = error.response?.data;
+  const status = response?.status;
+  const data = response?.data;
 
   if (status === 422) {
-    if (data?.errors) {
-      const messages = Object.entries(data.errors).flatMap(
-        ([field, fieldMessages]) => {
-          const label = FIELD_LABELS[field] ?? field;
+    const errors = data?.errors;
 
-          const normalizedMessages = Array.isArray(fieldMessages)
-            ? fieldMessages
-            : [fieldMessages];
+    const conflict = (
+      Array.isArray(errors?.start_at) ? errors.start_at : []
+    ).find(
+      (m: unknown) =>
+        typeof m === "string" &&
+        m.toLowerCase().includes("dentista") &&
+        m.toLowerCase().includes("cita"),
+    );
+    if (conflict) return conflict;
 
-          return normalizedMessages.map(
-            (message) => `${label}: ${message}`
-          );
-        }
+    if (errors) {
+      const messages = Object.entries(errors).flatMap(([field, msgs]) =>
+        ([] as unknown[])
+          .concat(msgs)
+          .map((m) => `${FIELD_LABELS[field] ?? field}: ${String(m)}`),
       );
-
-      return messages.length > 0
-        ? messages.join("\n")
-        : data.message ?? "Revisa los datos de la cita.";
+      if (messages.length) return messages.join("\n");
+      return data?.message ?? "Revisa los datos de la cita.";
     }
 
     return data?.message ?? "Los datos enviados no son válidos.";
   }
 
-  if (status === 401) {
-    return "Tu sesión ha expirado. Inicia sesión nuevamente.";
-  }
-
-  if (status === 403) {
-    return "No tienes permisos para realizar esta operación.";
-  }
-
-  if (status === 404) {
-    return "No se encontró la cita o alguno de los recursos seleccionados.";
-  }
-
-  if (status === 409) {
-    return "Existe un conflicto con el horario seleccionado.";
-  }
-
-  if (status && status >= 500) {
+  if (status && STATUS_MESSAGES[status]) return STATUS_MESSAGES[status];
+  if (status && status >= 500)
     return "Ocurrió un error en el servidor. Inténtalo nuevamente.";
-  }
 
   return (
     data?.message ??
-    error.message ??
+    message ??
     "No se pudo guardar la cita. Inténtalo nuevamente."
   );
 };
 
-// ==========================================
-// FECHA LOCAL YYYY-MM-DD
-// ==========================================
-
-const getLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-};
-
-// ==========================================
-// HORA LOCAL HH:mm
-// ==========================================
-
-const getLocalTime = (date: Date): string => {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-
-  return `${hours}:${minutes}`;
-};
-
-// ==========================================
-// SIGUIENTE MÚLTIPLO DE 5 MINUTOS
-// ==========================================
-
-const getNextFiveMinuteSlot = (date: Date): Date => {
-  const next = new Date(date);
-
-  const totalMinutes =
-    next.getHours() * 60 + next.getMinutes();
-
-  const nextMinutes =
-    (Math.floor(totalMinutes / 5) + 1) * 5;
-
-  next.setHours(0, nextMinutes, 0, 0);
-
-  return next;
-};
-
-// ==========================================
-// SIGUIENTE MÚLTIPLO DE 5 PARA UNA HORA
-// ==========================================
-
-const getNextFiveMinuteTime = (time: string): string => {
-  if (!time) return "00:00";
-
-  const [hours, minutes] = time.split(":").map(Number);
-
-  const totalMinutes = hours * 60 + minutes;
-
-  const nextMinutes =
-    (Math.floor(totalMinutes / 5) + 1) * 5;
-
-  const normalizedHours = Math.floor(nextMinutes / 60) % 24;
-  const normalizedMinutes = nextMinutes % 60;
-
-  return `${String(normalizedHours).padStart(2, "0")}:${String(
-    normalizedMinutes
-  ).padStart(2, "0")}`;
-};
-
-// ==========================================
-// VALIDAR INTERVALOS DE 5 MINUTOS
-// ==========================================
-
-const isFiveMinuteInterval = (time: string): boolean => {
-  if (!time) return false;
-
-  const [, minutes] = time.split(":");
-
-  return Number(minutes) % 5 === 0;
-};
-
-// ==========================================
-// FECHA Y HORA LOCAL A DATE
-// ==========================================
-
-const getSelectedDateTime = (
-  date: string,
-  time: string
-): Date => {
-  return new Date(`${date}T${time}:00`);
-};
-
-// ==========================================
-// COMPONENTE
-// ==========================================
+/* ==========================================
+   COMPONENTE
+   Nota: para reiniciar el formulario cuando cambie la cita,
+   usa `key` desde el padre (p. ej. key={appointment.id}).
+========================================== */
 
 export default function AppointmentFormModal({
   mode,
@@ -203,411 +177,240 @@ export default function AppointmentFormModal({
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const [values, setValues] = useState<AppointmentFormValues>({
-    ...initialValues,
-    patientId:
-      initialValues.patientId == null
-        ? null
-        : Number(initialValues.patientId),
-    treatmentId:
-      initialValues.treatmentId == null
-        ? null
-        : Number(initialValues.treatmentId),
-    dentistUserId:
-      initialValues.dentistUserId == null
-        ? null
-        : Number(initialValues.dentistUserId),
-  });
-
+  const [values, setValues] = useState(() => normalizeValues(initialValues));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [now, setNow] = useState(() => new Date());
 
-  // ==========================================
-  // BÚSQUEDA DE PACIENTES
-  // ==========================================
+  const [extraDescription, setExtraDescription] = useState("");
+  const [extraUnitPrice, setExtraUnitPrice] = useState("");
 
-  const [patientSearch, setPatientSearch] = useState(
-    initialPatientName
-  );
+  /* ---------- Búsqueda de pacientes ---------- */
 
-  const [debouncedPatientSearch, setDebouncedPatientSearch] =
-    useState("");
+  const [patientSearch, setPatientSearch] = useState(initialPatientName);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [showResults, setShowResults] = useState(false);
 
-  const [showPatientResults, setShowPatientResults] =
-    useState(false);
-
-  // Esperar 300 ms antes de consultar el backend.
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedPatientSearch(
-        showPatientResults ? patientSearch.trim() : ""
-      );
-    }, 300);
+    const t = window.setTimeout(
+      () => setDebouncedSearch(showResults ? patientSearch.trim() : ""),
+      SEARCH_DEBOUNCE,
+    );
+    return () => window.clearTimeout(t);
+  }, [patientSearch, showResults]);
 
-    return () => window.clearTimeout(timeout);
-  }, [patientSearch, showPatientResults]);
-
-  // Consultar pacientes de la clínica seleccionada.
   const {
     patients,
     loading: patientsLoading,
     error: patientsError,
-  } = usePatientSearch(
-    clinicId,
-    debouncedPatientSearch
-  );
+  } = usePatientSearch(clinicId, debouncedSearch);
 
-  // ==========================================
-  // SINCRONIZAR VALORES DEL FORMULARIO
-  // ==========================================
+  /* ---------- Diálogo ---------- */
 
   useEffect(() => {
-    setValues({
-      ...initialValues,
-      patientId:
-        initialValues.patientId == null
-          ? null
-          : Number(initialValues.patientId),
-      treatmentId:
-        initialValues.treatmentId == null
-          ? null
-          : Number(initialValues.treatmentId),
-      dentistUserId:
-        initialValues.dentistUserId == null
-          ? null
-          : Number(initialValues.dentistUserId),
-    });
-
-    setError(null);
-
-    setPatientSearch(initialPatientName);
-    setDebouncedPatientSearch("");
-    setShowPatientResults(false);
-  }, [
-    initialValues.patientId,
-    initialValues.treatmentId,
-    initialValues.dentistUserId,
-    initialValues.date,
-    initialValues.startTime,
-    initialValues.endTime,
-    initialValues.status,
-    initialValues.details,
-    initialPatientName,
-  ]);
-
-  // ==========================================
-  // MANTENER ACTUALIZADA LA HORA
-  // ==========================================
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNow(new Date());
-    }, 15000);
-
-    return () => window.clearInterval(interval);
+    dialogRef.current?.showModal();
   }, []);
 
-  // ==========================================
-  // ABRIR MODAL
-  // ==========================================
+  /* ---------- Fecha y horario ---------- */
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-
-    if (dialog && !dialog.open) {
-      dialog.showModal();
-    }
-  }, []);
-
-  // ==========================================
-  // VALIDACIONES DE FECHA Y HORARIO
-  // ==========================================
-
+  const now = new Date();
   const today = getLocalDate(now);
-
-  const isOriginalDate =
-    mode === "edit" &&
-    values.date === initialValues.date;
-
-  const isOriginalStartTime =
-    isOriginalDate &&
-    values.startTime === initialValues.startTime;
-
-  const isToday = values.date === today;
-
-  const nextSlot = getNextFiveMinuteSlot(now);
-
-  const nextSlotDate = getLocalDate(nextSlot);
+  const nextSlot = getNextSlot(now);
+  const nextSlotIsToday = getLocalDate(nextSlot) === today;
   const nextSlotTime = getLocalTime(nextSlot);
 
+  const isEdit = mode === "edit";
+  const isOriginalDate = isEdit && values.date === initialValues.date;
+  const isOriginalStart =
+    isOriginalDate && values.startTime === initialValues.startTime;
+  const isToday = values.date === today;
+
   const minDate =
-    mode === "edit" &&
-    isOriginalDate &&
-    initialValues.date < today
-      ? initialValues.date
-      : today;
+    isOriginalDate && initialValues.date < today ? initialValues.date : today;
 
-  const minStartTime = isOriginalStartTime
-    ? "00:00"
-    : isToday
-      ? nextSlotDate === today
-        ? nextSlotTime
-        : undefined
-      : "00:00";
+  const minStartTime =
+    isToday && !isOriginalStart && nextSlotIsToday ? nextSlotTime : "00:00";
 
-  const noMoreSlotsToday =
-    isToday &&
-    nextSlotDate !== today &&
-    !isOriginalStartTime;
+  const noMoreSlotsToday = isToday && !nextSlotIsToday && !isOriginalStart;
 
-  const minEndTime = values.startTime
-    ? getNextFiveMinuteTime(values.startTime)
-    : "00:00";
+  const minEndTime = values.startTime ? addStep(values.startTime) : "00:00";
 
-  // ==========================================
-  // ACTUALIZAR CAMPOS GENERALES
-  // ==========================================
+  /* ---------- Conceptos ---------- */
+
+  const availableTreatments = options.treatments.filter(
+    (t) => t.is_active !== false,
+  );
+
+  const rows = values.items.map((item) => {
+    if (item.type === "treatment") {
+      const treatment = options.treatments.find(
+        (t) => Number(t.id) === Number(item.treatmentId),
+      );
+      return {
+        item,
+        description: treatment?.name ?? `Tratamiento #${item.treatmentId}`,
+        unitPrice: treatment ? Number(treatment.price) : null,
+        inactive: !treatment || treatment.is_active === false,
+      };
+    }
+    return {
+      item,
+      description: item.description,
+      unitPrice: Number(item.unitPrice),
+      inactive: false,
+    };
+  });
+
+  const estimatedTotal = rows.reduce(
+    (sum, r) => sum + (r.unitPrice ?? 0) * (Number(r.item.quantity) || 1),
+    0,
+  );
+
+  const hasUnavailableTreatment = rows.some(
+    (r) => r.item.type === "treatment" && r.inactive,
+  );
+
+  /* ---------- Handlers ---------- */
+
+  const patch = (changes: Partial<AppointmentFormValues>) => {
+    setValues((prev) => ({ ...prev, ...changes }));
+    setError(null);
+  };
 
   const setField =
     (field: keyof AppointmentFormValues) =>
     (
       e: ChangeEvent<
         HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      >
-    ) => {
-      const value = e.target.value;
+      >,
+    ) =>
+      patch({ [field]: e.target.value });
 
-      setValues((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
-
-      setError(null);
-    };
-
-  // ==========================================
-  // CAMBIAR PACIENTE
-  // ==========================================
-
-  const handlePatientChange = (id: string) => {
-    setValues((prev) => ({
-      ...prev,
-      patientId: id ? Number(id) : null,
-    }));
-
+  const addItem = (item: AppointmentFormItem) => {
+    setValues((prev) => ({ ...prev, items: [...prev.items, item] }));
     setError(null);
   };
 
-  // ==========================================
-  // CAMBIAR TRATAMIENTO
-  // ==========================================
+  const handleAddTreatment = (id: string) => {
+    if (!id) return;
+    const treatmentId = Number(id);
+    const treatment = options.treatments.find(
+      (t) => Number(t.id) === treatmentId,
+    );
 
-  const handleTreatmentChange = (
-    e: ChangeEvent<HTMLSelectElement>
-  ) => {
-    const id = e.target.value;
+    if (!treatment || treatment.is_active === false) {
+      setError("El tratamiento seleccionado no está disponible.");
+      return;
+    }
 
-    setValues((prev) => ({
-      ...prev,
-      treatmentId: id ? Number(id) : null,
-    }));
-
-    setError(null);
+    addItem({ type: "treatment", treatmentId, quantity: 1 });
   };
 
-  // ==========================================
-  // CAMBIAR DENTISTA
-  // ==========================================
+  const handleAddExtra = () => {
+    const description = extraDescription.trim();
+    const unitPrice = Number(extraUnitPrice);
 
-  const handleDentistChange = (
-    e: ChangeEvent<HTMLSelectElement>
-  ) => {
-    const id = e.target.value;
+    if (!description) {
+      setError("Escribe la descripción del cargo adicional.");
+      return;
+    }
 
-    setValues((prev) => ({
-      ...prev,
-      dentistUserId: id ? Number(id) : null,
-    }));
+    if (
+      extraUnitPrice.trim() === "" ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
+    ) {
+      setError("Ingresa un precio válido.");
+      return;
+    }
 
-    setError(null);
+    addItem({ type: "extra", description, quantity: 1, unitPrice });
+    setExtraDescription("");
+    setExtraUnitPrice("");
   };
 
-  // ==========================================
-  // CAMBIAR FECHA
-  // ==========================================
+  const handleRemoveItem = (index: number) =>
+    patch({ items: values.items.filter((_, i) => i !== index) });
 
-  const handleDateChange = (
-    e: ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     const date = e.target.value;
+    const clearTimes =
+      date === today &&
+      (!nextSlotIsToday ||
+        !values.startTime ||
+        values.startTime < nextSlotTime);
 
-    setValues((prev) => {
-      let startTime = prev.startTime;
-      let endTime = prev.endTime;
-
-      const currentNow = new Date();
-      const currentToday = getLocalDate(currentNow);
-
-      const currentNextSlot =
-        getNextFiveMinuteSlot(currentNow);
-
-      const currentNextDate = getLocalDate(currentNextSlot);
-      const currentNextTime = getLocalTime(currentNextSlot);
-
-      if (date === currentToday) {
-        if (
-          currentNextDate !== currentToday ||
-          !startTime ||
-          startTime < currentNextTime
-        ) {
-          startTime = "";
-          endTime = "";
-        }
-      }
-
-      return {
-        ...prev,
-        date,
-        startTime,
-        endTime,
-      };
+    patch({
+      date,
+      ...(clearTimes ? { startTime: "", endTime: "" } : {}),
     });
-
-    setError(null);
   };
 
-  // ==========================================
-  // CAMBIAR HORA DE INICIO
-  // ==========================================
-
-  const handleStartTimeChange = (
-    e: ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleStartTimeChange = (e: ChangeEvent<HTMLInputElement>) => {
     const startTime = e.target.value;
-
-    setValues((prev) => ({
-      ...prev,
+    patch({
       startTime,
-      endTime:
-        prev.endTime && prev.endTime > startTime
-          ? prev.endTime
-          : "",
-    }));
-
-    setError(null);
+      endTime: values.endTime > startTime ? values.endTime : "",
+    });
   };
 
-  // ==========================================
-  // ENVIAR FORMULARIO
-  // ==========================================
+  /* ---------- Validación ---------- */
 
-  const handleSubmit = async (
-    e: FormEvent<HTMLFormElement>
-  ) => {
+  const getValidationError = (): string | null => {
+    const { date, startTime, endTime, patientId, items } = values;
+    const submitNow = new Date();
+    const keepingDate = isEdit && date === initialValues.date;
+    const keepingStart = keepingDate && startTime === initialValues.startTime;
+
+    if (!date) return "Selecciona una fecha para la cita.";
+
+    if (date < getLocalDate(submitNow) && !keepingDate)
+      return "No puedes agendar o reprogramar citas en días pasados.";
+
+    if (patientId === null) return "Selecciona un paciente.";
+    if (items.length === 0) return "Agrega al menos un concepto a la cita.";
+
+    for (const item of items) {
+      if (!(Number(item.quantity) > 0))
+        return "Todos los conceptos deben tener una cantidad válida.";
+
+      if (
+        item.type !== "treatment" &&
+        (!item.description.trim() ||
+          !Number.isFinite(Number(item.unitPrice)) ||
+          Number(item.unitPrice) < 0)
+      )
+        return "Revisa la descripción y el precio de los conceptos adicionales.";
+    }
+
+    if (!startTime) return "Selecciona una hora de inicio.";
+    if (!endTime) return "Selecciona una hora de finalización.";
+
+    if (!keepingStart && !isStepAligned(startTime))
+      return "La hora de inicio debe avanzar en intervalos de 5 minutos.";
+
+    if (!isStepAligned(endTime))
+      return "La hora de finalización debe avanzar en intervalos de 5 minutos.";
+
+    if (
+      date === getLocalDate(submitNow) &&
+      !keepingStart &&
+      new Date(`${date}T${startTime}:00`) <= submitNow
+    )
+      return "La hora de inicio debe ser posterior a la hora actual.";
+
+    if (endTime <= startTime)
+      return "La hora de finalización debe ser posterior a la hora de inicio.";
+
+    return null;
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (saving) return;
 
-    const submitNow = new Date();
-    const submitToday = getLocalDate(submitNow);
-
-    const keepingOriginalDate =
-      mode === "edit" &&
-      values.date === initialValues.date;
-
-    const keepingOriginalStart =
-      keepingOriginalDate &&
-      values.startTime === initialValues.startTime;
-
-    const keepingOriginalEnd =
-      keepingOriginalDate &&
-      values.endTime === initialValues.endTime;
-
-    // Validar fecha.
-    if (!values.date) {
-      setError("Selecciona una fecha para la cita.");
-      return;
-    }
-
-    if (
-      values.date < submitToday &&
-      !keepingOriginalDate
-    ) {
-      setError(
-        "No puedes agendar o reprogramar citas en días pasados."
-      );
-      return;
-    }
-
-    // Validar paciente.
-    if (values.patientId === null) {
-      setError("Selecciona un paciente.");
-      return;
-    }
-
-    // Validar tratamiento.
-    if (values.treatmentId === null) {
-      setError("Selecciona un tratamiento.");
-      return;
-    }
-
-    // Validar hora de inicio.
-    if (!values.startTime) {
-      setError("Selecciona una hora de inicio.");
-      return;
-    }
-
-    // Validar hora de finalización.
-    if (!values.endTime) {
-      setError("Selecciona una hora de finalización.");
-      return;
-    }
-
-    // Validar intervalos de 5 minutos.
-    if (
-      !keepingOriginalStart &&
-      !isFiveMinuteInterval(values.startTime)
-    ) {
-      setError(
-        "La hora de inicio debe avanzar en intervalos de 5 minutos."
-      );
-      return;
-    }
-
-    if (
-      !keepingOriginalEnd &&
-      !isFiveMinuteInterval(values.endTime)
-    ) {
-      setError(
-        "La hora de finalización debe avanzar en intervalos de 5 minutos."
-      );
-      return;
-    }
-
-    // Validar que la hora de inicio sea futura.
-    if (
-      values.date === submitToday &&
-      !keepingOriginalStart
-    ) {
-      const selectedStart = getSelectedDateTime(
-        values.date,
-        values.startTime
-      );
-
-      if (selectedStart <= submitNow) {
-        setError(
-          "La hora de inicio debe ser posterior a la hora actual."
-        );
-        return;
-      }
-    }
-
-    // Validar hora final.
-    if (values.endTime <= values.startTime) {
-      setError(
-        "La hora de finalización debe ser posterior a la hora de inicio."
-      );
+    const validationError = getValidationError();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -615,50 +418,19 @@ export default function AppointmentFormModal({
       setSaving(true);
       setError(null);
 
-      await onSubmit({
-        ...values,
-        patientId: Number(values.patientId),
-        treatmentId: Number(values.treatmentId),
-        dentistUserId:
-          values.dentistUserId == null
-            ? null
-            : Number(values.dentistUserId),
-        details: values.details.trim(),
-      });
+      const normalized = normalizeValues(values);
+      await onSubmit({ ...normalized, details: normalized.details.trim() });
     } catch (err: unknown) {
       console.error("Error al guardar la cita:", err);
-
       setError(getAppointmentError(err));
     } finally {
       setSaving(false);
     }
   };
 
-  // ==========================================
-  // TRATAMIENTOS DISPONIBLES
-  // ==========================================
-
-  const selectedInactiveTreatment =
-    mode === "edit"
-      ? options.treatments.find(
-          (treatment) =>
-            Number(treatment.id) === Number(values.treatmentId) &&
-            treatment.is_active === false
-        )
-      : undefined;
-
-  const availableTreatments = [
-    ...options.treatments.filter(
-      (treatment) => treatment.is_active === true
-    ),
-    ...(selectedInactiveTreatment
-      ? [selectedInactiveTreatment]
-      : []),
-  ];
-
-  // ==========================================
-  // RENDER
-  // ==========================================
+  /* ==========================================
+     RENDER
+  ========================================== */
 
   return (
     <dialog
@@ -666,38 +438,25 @@ export default function AppointmentFormModal({
       className="appt-modal"
       aria-labelledby="appt-modal-title"
       onClose={onClose}
+      onCancel={(e) => saving && e.preventDefault()}
       onClick={(e) => {
-        if (e.target === dialogRef.current && !saving) {
-          onClose();
-        }
+        if (e.target === dialogRef.current && !saving) onClose();
       }}
     >
-      <form
-        className="appt-modal__form"
-        onSubmit={handleSubmit}
-        noValidate
-      >
-        <h2
-          id="appt-modal-title"
-          className="appt-modal__title"
-        >
-          {mode === "create" ? "Nueva cita" : "Editar cita"}
+      <form className="appt-modal__form" onSubmit={handleSubmit} noValidate>
+        <h2 id="appt-modal-title" className="appt-modal__title">
+          {isEdit ? "Editar cita" : "Nueva cita"}
         </h2>
 
         {/* PACIENTE */}
-        <label className="appt-field">
+        <div className="appt-field">
           <span>Paciente</span>
 
           <div
             className="patient-search"
             onBlur={(e) => {
-              if (
-                !e.currentTarget.contains(
-                  e.relatedTarget as Node | null
-                )
-              ) {
-                setShowPatientResults(false);
-              }
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                setShowResults(false);
             }}
           >
             <input
@@ -706,164 +465,300 @@ export default function AppointmentFormModal({
               value={patientSearch}
               onChange={(e) => {
                 setPatientSearch(e.target.value);
-                setShowPatientResults(true);
-
-                // Al modificar la búsqueda,
-                // se invalida la selección anterior.
-                setValues((prev) => ({
-                  ...prev,
-                  patientId: null,
-                }));
-
-                setError(null);
+                setShowResults(true);
+                patch({ patientId: null });
               }}
-              onFocus={() => {
-                if (patientSearch.trim()) {
-                  setShowPatientResults(true);
-                }
-              }}
+              onFocus={() => patientSearch.trim() && setShowResults(true)}
               placeholder="Buscar paciente..."
               autoComplete="off"
+              aria-label="Paciente"
+              disabled={saving}
             />
 
-            {showPatientResults &&
-              patientSearch.trim() !== "" && (
-                <div className="patient-search-results">
-                  {patientsLoading && (
-                    // <div className="patient-search-results__empty">
-                    //   Buscando pacientes...
-                    // </div>
-                    <LoadingScreen />
-                  )}
+            {showResults && patientSearch.trim() !== "" && (
+              <div className="patient-search-results">
+                {patientsLoading && <LoadingScreen />}
 
-                  {!patientsLoading && patientsError && (
+                {!patientsLoading && patientsError && (
+                  <div className="patient-search-results__empty">
+                    No se pudieron cargar los pacientes.
+                  </div>
+                )}
+
+                {!patientsLoading &&
+                  !patientsError &&
+                  patients.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => {
+                        patch({ patientId: Number(p.id) });
+                        setPatientSearch(`${p.first_name} ${p.last_name}`.trim());
+                        setShowResults(false);
+                      }}
+                    >
+                      {p.first_name} {p.last_name}
+                    </button>
+                  ))}
+
+                {!patientsLoading &&
+                  !patientsError &&
+                  patients.length === 0 && (
                     <div className="patient-search-results__empty">
-                      No se pudieron cargar los pacientes.
+                      No se encontraron pacientes.
                     </div>
                   )}
-
-                  {!patientsLoading &&
-                    !patientsError &&
-                    patients.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        onClick={() => {
-                          handlePatientChange(
-                            String(patient.id)
-                          );
-
-                          setPatientSearch(
-                            `${patient.first_name} ${patient.last_name}`.trim()
-                          );
-
-                          setShowPatientResults(false);
-                        }}
-                      >
-                        {patient.first_name} {patient.last_name}
-                      </button>
-                    ))}
-
-                  {!patientsLoading &&
-                    !patientsError &&
-                    patients.length === 0 && (
-                      <div className="patient-search-results__empty">
-                        No se encontraron pacientes.
-                      </div>
-                    )}
-                </div>
-              )}
+              </div>
+            )}
           </div>
-        </label>
-
-        {/* TRATAMIENTO */}
-        <label className="appt-field">
-          <span>Tratamiento</span>
-
-          <select
-            value={values.treatmentId ?? ""}
-            onChange={handleTreatmentChange}
-            required
-          >
-            <option value="">
-              Selecciona un tratamiento
-            </option>
-
-            {availableTreatments.map((treatment) => (
-              <option
-                key={treatment.id}
-                value={treatment.id}
-              >
-                {treatment.name}
-                {treatment.is_active === false
-                  ? " (Inactivo - Tratamiento actual)"
-                  : ""}
-                {" — $"}
-                {Number(treatment.price).toFixed(2)}
-              </option>
-            ))}
-          </select>
-        </label>
+        </div>
 
         {/* DENTISTA */}
         <label className="appt-field">
           <span>Dentista</span>
-
           <select
             value={values.dentistUserId ?? ""}
-            onChange={handleDentistChange}
+            onChange={(e) =>
+              patch({
+                dentistUserId: e.target.value ? Number(e.target.value) : null,
+              })
+            }
+            disabled={saving}
           >
             <option value="">Sin asignar</option>
-
-            {options.dentists.map((dentist) => (
-              <option
-                key={dentist.id}
-                value={dentist.id}
-              >
-                {dentist.name}
+            {options.dentists.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
               </option>
             ))}
           </select>
         </label>
+
+        {/* CONCEPTOS */}
+        <section className="appt-items">
+          <div className="appt-section-header">
+            <div>
+              <h3>Conceptos de la cita</h3>
+              <p>Tratamientos y cargos asociados a esta cita.</p>
+            </div>
+
+            <span className="appt-items__count">
+              {values.items.length}{" "}
+              {values.items.length === 1 ? "concepto" : "conceptos"}
+            </span>
+          </div>
+
+          <div className="appt-items__panel">
+            <div className="appt-items__panel-header">
+              <div className="appt-items__panel-icon">
+                <span>+</span>
+              </div>
+              <div>
+                <h4>Agregar tratamiento</h4>
+                <p>Selecciona un tratamiento del catálogo.</p>
+              </div>
+            </div>
+
+            <label className="appt-field">
+              <span>Tratamiento disponible</span>
+              <select
+                value=""
+                onChange={(e) => handleAddTreatment(e.target.value)}
+                disabled={saving || availableTreatments.length === 0}
+              >
+                <option value="">
+                  {availableTreatments.length === 0
+                    ? "No hay tratamientos disponibles"
+                    : "Selecciona un tratamiento..."}
+                </option>
+                {availableTreatments.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} — {formatCurrency(Number(t.price))}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="appt-items__panel">
+            <div className="appt-items__panel-header">
+              <div className="appt-items__panel-icon appt-items__panel-icon--extra">
+                <span>$</span>
+              </div>
+              <div>
+                <h4>Cargo adicional</h4>
+                <p>Agrega materiales u otros conceptos.</p>
+              </div>
+            </div>
+
+            <div className="appt-extra-grid">
+              <label className="appt-field">
+                <span>Descripción</span>
+                <input
+                  type="text"
+                  value={extraDescription}
+                  onChange={(e) => setExtraDescription(e.target.value)}
+                  placeholder="Ej. Material adicional"
+                  maxLength={255}
+                  disabled={saving}
+                />
+              </label>
+
+              <label className="appt-field">
+                <span>Precio (MXN)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={extraUnitPrice}
+                  onChange={(e) => setExtraUnitPrice(e.target.value)}
+                  placeholder="0.00"
+                  disabled={saving}
+                />
+              </label>
+            </div>
+
+            <div className="appt-items__add-action">
+              <button
+                type="button"
+                className="appt-btn appt-btn--secondary"
+                onClick={handleAddExtra}
+                disabled={saving}
+              >
+                + Agregar cargo
+              </button>
+            </div>
+          </div>
+
+          <div className="appt-items__list">
+            <div className="appt-items__list-header">
+              <h4>Conceptos agregados</h4>
+            </div>
+
+            {rows.length === 0 ? (
+              <div className="appt-items__empty">
+                <div className="appt-items__empty-icon">+</div>
+                <strong>Sin conceptos todavía</strong>
+                <p>Selecciona un tratamiento o agrega un cargo adicional.</p>
+              </div>
+            ) : (
+              <div className="appt-items__table">
+                {rows.map(({ item, description, unitPrice, inactive }, i) => (
+                  <div
+                    className="appt-items__item"
+                    key={`${item.type}-${item.id ?? i}`}
+                  >
+                    <div className="appt-items__item-info">
+                      <strong>{description}</strong>
+
+                      <span>
+                        <span
+                          className={`appt-item-badge ${
+                            item.type === "treatment"
+                              ? "appt-item-badge--treatment"
+                              : "appt-item-badge--extra"
+                          }`}
+                        >
+                          {ITEM_LABELS[item.type] ?? ITEM_LABELS.extra}
+                        </span>
+
+                        {inactive && (
+                          <span className="appt-item-inactive">
+                            Inactivo o no disponible
+                          </span>
+                        )}
+                      </span>
+
+                      {unitPrice === null && (
+                        <span className="appt-item-warning">
+                          Este tratamiento ya no está disponible en el
+                          catálogo.
+                        </span>
+                      )}
+                    </div>
+
+                    <strong className="appt-items__total">
+                      {unitPrice === null
+                        ? "—"
+                        : formatCurrency(
+                            unitPrice * (Number(item.quantity) || 1),
+                          )}
+                    </strong>
+
+                    <button
+                      type="button"
+                      className="appt-items__remove"
+                      onClick={() => handleRemoveItem(i)}
+                      disabled={saving}
+                      aria-label={`Eliminar ${description}`}
+                      title="Eliminar concepto"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="appt-items__summary">
+            <div>
+              <span>Total estimado</span>
+              <small>
+                {values.items.length}{" "}
+                {values.items.length === 1
+                  ? "concepto registrado"
+                  : "conceptos registrados"}
+              </small>
+            </div>
+            <strong>{formatCurrency(estimatedTotal)}</strong>
+          </div>
+
+          {hasUnavailableTreatment && (
+            <p className="appt-items__warning">
+              Hay tratamientos que ya no están disponibles en el catálogo
+              actual. Se conservarán como conceptos existentes.
+            </p>
+          )}
+        </section>
 
         {/* FECHA Y HORARIO */}
         <div className="appt-row">
           <label className="appt-field">
             <span>Fecha</span>
-
             <input
               type="date"
               value={values.date}
               min={minDate}
               onChange={handleDateChange}
+              disabled={saving}
               required
             />
           </label>
 
           <label className="appt-field">
             <span>Inicio</span>
-
             <input
               type="time"
               step={300}
               min={minStartTime}
               value={values.startTime}
               onChange={handleStartTimeChange}
-              disabled={noMoreSlotsToday}
+              disabled={saving || noMoreSlotsToday}
               required
             />
           </label>
 
           <label className="appt-field">
             <span>Fin</span>
-
             <input
               type="time"
               step={300}
               min={minEndTime}
               value={values.endTime}
               onChange={setField("endTime")}
-              disabled={!values.startTime}
+              disabled={saving || !values.startTime}
               required
             />
           </label>
@@ -871,22 +766,21 @@ export default function AppointmentFormModal({
 
         {noMoreSlotsToday && (
           <p className="appt-modal__error" role="status">
-            Ya no hay horarios disponibles para hoy.
-            Selecciona otro día.
+            Ya no hay horarios disponibles para hoy. Selecciona otro día.
           </p>
         )}
 
         {/* ESTADO */}
         <label className="appt-field">
           <span>Estado</span>
-
           <select
             value={values.status}
             onChange={setField("status")}
+            disabled={saving}
           >
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status}
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
             ))}
           </select>
@@ -895,36 +789,26 @@ export default function AppointmentFormModal({
         {/* DETALLES */}
         <label className="appt-field">
           <span>Detalles (opcional)</span>
-
           <textarea
             rows={3}
             value={values.details}
             onChange={setField("details")}
+            disabled={saving}
           />
         </label>
 
         {/* ERROR */}
         {error && (
-          <div
-            className="appt-modal__error"
-            role="alert"
-            aria-live="assertive"
-          >
+          <div className="appt-modal__error" role="alert" aria-live="assertive">
             <div className="appt-modal__error-header">
-              <span className="appt-modal__error-icon">
-                !
-              </span>
-
-              <strong>
-                No se pudo guardar la cita
-              </strong>
+              <span className="appt-modal__error-icon">!</span>
+              <strong>No se pudo guardar la cita</strong>
             </div>
-
             <p>{error}</p>
           </div>
         )}
 
-        {/* BOTONES */}
+        {/* ACCIONES */}
         <div className="appt-modal__actions">
           <button
             type="button"
@@ -942,9 +826,9 @@ export default function AppointmentFormModal({
           >
             {saving
               ? "Guardando…"
-              : mode === "create"
-                ? "Guardar cita"
-                : "Guardar cambios"}
+              : isEdit
+                ? "Guardar cambios"
+                : "Guardar cita"}
           </button>
         </div>
       </form>

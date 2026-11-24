@@ -1,27 +1,47 @@
-import type { AppointmentStatus } from "./appointment";
+
+import type {
+  AppointmentItemType,
+  AppointmentStatus,
+} from "./appointment";
+
+
+export type AppointmentFormItem =
+  | {
+      id?: number;
+      type: "treatment";
+      treatmentId: number;
+      quantity: number;
+    }
+  | {
+      id?: number;
+      type: "product" | "extra";
+      description: string;
+      quantity: number;
+      unitPrice: number;
+    };
+
 
 export interface AppointmentFormValues {
   id?: string;
 
-  // Identificadores de los registros.
   patientId: number | null;
-  treatmentId: number | null;
   dentistUserId: number | null;
 
-  // Datos del formulario.
-  details: string;
-  date: string; // YYYY-MM-DD
-  startTime: string; // HH:mm
-  endTime: string; // HH:mm
+  // Conceptos asociados a la cita.
+  items: AppointmentFormItem[];
 
+  // Datos generales de la cita.
+  details: string;
+  date: string;
+  startTime: string;
+  endTime: string;
   status: AppointmentStatus;
 }
 
-interface ApiErrorResponse {
+export interface ApiErrorResponse {
   message?: string;
   errors?: Record<string, string[] | string>;
 }
-
 
 export interface ApiError {
   response?: {

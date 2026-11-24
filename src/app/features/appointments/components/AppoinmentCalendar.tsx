@@ -1,11 +1,4 @@
-
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ComponentProps,
   ComponentRef,
@@ -13,13 +6,11 @@ import type {
 } from "react";
 
 import FullCalendar from "@fullcalendar/react";
-
 import dayGridPlugin from "@fullcalendar/react/daygrid";
 import timeGridPlugin from "@fullcalendar/react/timegrid";
 import listPlugin from "@fullcalendar/react/list";
 import interactionPlugin from "@fullcalendar/react/interaction";
 import themePlugin from "@fullcalendar/react/themes/classic";
-
 import esLocale from "@fullcalendar/react/locales/es";
 
 import "@fullcalendar/react/skeleton.css";
@@ -31,48 +22,25 @@ import {
   STATUS,
   getStatusKey,
 } from "../constants/Appointmentstatus";
-
 import type { StatusKey } from "../constants/Appointmentstatus";
 import type { Appointment } from "../types/appointment";
-
-import type {
-  ApiAppointmentStats,
-} from "../services/appointmentService";
+import type { ApiAppointmentStats } from "../services/appointmentService";
 
 import "../css/appointments-calendar.css";
 
-// ============================================
-// TIPOS
-// ============================================
+/* ==========================================
+   TIPOS
+========================================== */
 
 type CalendarProps = ComponentProps<typeof FullCalendar>;
-
 type CalendarInstance = ComponentRef<typeof FullCalendar>;
 
-type DateClickInfo = Parameters<
-  NonNullable<CalendarProps["dateClick"]>
->[0];
-
-type EventClickInfo = Parameters<
-  NonNullable<CalendarProps["eventClick"]>
->[0];
-
+type DateClickInfo = Parameters<NonNullable<CalendarProps["dateClick"]>>[0];
+type EventClickInfo = Parameters<NonNullable<CalendarProps["eventClick"]>>[0];
+type DatesSetInfo = Parameters<NonNullable<CalendarProps["datesSet"]>>[0];
 type EventMoveInfo =
   | Parameters<NonNullable<CalendarProps["eventDrop"]>>[0]
   | Parameters<NonNullable<CalendarProps["eventResize"]>>[0];
-
-type DatesSetInfo = Parameters<
-  NonNullable<CalendarProps["datesSet"]>
->[0];
-
-type EventContentInfo = {
-  event: {
-    extendedProps: Record<string, unknown>;
-    start: Date | null;
-    end: Date | null;
-  };
-  timeText: string;
-};
 
 type CalendarView =
   | "dayGridMonth"
@@ -82,174 +50,136 @@ type CalendarView =
 
 interface Props {
   appointments: Appointment[];
-
   stats: ApiAppointmentStats;
-
-  onMonthChange: (
-    start: string,
-    end: string,
-  ) => void;
-
+  onMonthChange: (start: string, end: string) => void;
   onSelectAppointment: (appointment: Appointment) => void;
-
   onSlotClick: (dateStr: string, allDay: boolean) => void;
-
   onMoveAppointment: (
     appointment: Appointment,
-    range: {
-      start: string;
-      end: string;
-    },
+    range: { start: string; end: string },
   ) => Promise<boolean> | boolean;
-
   onNewAppointment: () => void;
 }
 
-// ============================================
-// FECHAS DEL MES VISUALIZADO
-// ============================================
+/* ==========================================
+   CONSTANTES
+========================================== */
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
+const VIEWS: readonly [CalendarView, string][] = [
+  ["dayGridMonth", "Mes"],
+  ["timeGridWeek", "Semana"],
+  ["timeGridDay", "Día"],
+  ["listWeek", "Agenda"],
+];
 
-/**
- * Formatear fecha local conservando su offset.
- *
- * No utiliza toISOString(), para evitar convertir
- * el inicio del mes a otra fecha UTC.
- */
-function formatLocalDateTime(date: Date): string {
-  const offset = -date.getTimezoneOffset();
+const STAT_CARDS: readonly [
+  keyof ApiAppointmentStats,
+  string,
+  string,
+][] = [
+  ["today", "today", "Citas hoy"],
+  ["pending", "pending", "Por confirmar"],
+  ["upcoming", "confirmed", "Próximas confirmadas"],
+  ["cancelled", "cancelled", "Canceladas"],
+];
 
-  const sign = offset >= 0 ? "+" : "-";
+const TIME_FORMAT = {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+} as const;
 
-  const offsetHours = Math.floor(Math.abs(offset) / 60);
-  const offsetMinutes = Math.abs(offset) % 60;
+const SHORT_EVENT_MINUTES = 30;
+
+/* ==========================================
+   UTILIDADES
+========================================== */
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Fecha local con offset. No usa toISOString() para no mover el día a UTC. */
+function formatLocalDateTime(d: Date): string {
+  const offset = -d.getTimezoneOffset();
+  const abs = Math.abs(offset);
 
   return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
-    `${sign}${pad(offsetHours)}:${pad(offsetMinutes)}`
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+    `${offset >= 0 ? "+" : "-"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
   );
 }
 
-/**
- * Obtener el inicio y fin del mes de la fecha visualizada.
- *
- * El fin es exclusivo: primer día del siguiente mes.
- */
-function getMonthRange(date: Date): {
-  start: string;
-  end: string;
-} {
-  const start = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    1,
-  );
+const getAppointment = (extendedProps: Record<string, unknown>) =>
+  extendedProps.appointment as Appointment;
 
-  const end = new Date(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    1,
-  );
+const isShortEvent = (start: Date | null, end: Date | null) =>
+  !!start && !!end
+    ? (end.getTime() - start.getTime()) / 60000 <= SHORT_EVENT_MINUTES
+    : true;
+
+const statusVars = (key: StatusKey) => {
+  const { bg, fg, accent } = STATUS[key];
 
   return {
-    start: formatLocalDateTime(start),
-    end: formatLocalDateTime(end),
-  };
-}
-
-// ============================================
-// ESTILOS DE ESTADOS
-// ============================================
-
-function statusVars(key: StatusKey): CSSProperties {
-  const status = STATUS[key];
-
-  return {
-    "--appt-bg": status.bg,
-    "--appt-fg": status.fg,
-    "--appt-accent": status.accent,
+    "--appt-bg": bg,
+    "--appt-fg": fg,
+    "--appt-accent": accent,
   } as CSSProperties;
-}
-
-// ============================================
-// DETECTAR DISPOSITIVO MÓVIL
-// ============================================
+};
 
 function useIsMobile(breakpoint = 700) {
   const query = `(max-width: ${breakpoint}px)`;
 
   const [isMobile, setIsMobile] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia(query).matches,
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
   );
 
   useEffect(() => {
     const media = window.matchMedia(query);
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
 
-    const handleChange = (event: MediaQueryListEvent) => {
-      setIsMobile(event.matches);
-    };
-
-    media.addEventListener("change", handleChange);
-
-    return () => {
-      media.removeEventListener("change", handleChange);
-    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
   }, [query]);
 
   return isMobile;
 }
 
-// ============================================
-// CONTENIDO PERSONALIZADO DE LOS EVENTOS
-// ============================================
+/* ==========================================
+   CONTENIDO DE EVENTOS
+========================================== */
 
 function renderEventContent({
   event,
   timeText,
-}: EventContentInfo) {
-  const appointment = event.extendedProps
-    .appointment as Appointment;
-
+}: {
+  event: {
+    extendedProps: Record<string, unknown>;
+    start: Date | null;
+    end: Date | null;
+  };
+  timeText: string;
+}) {
+  const appointment = getAppointment(event.extendedProps);
   const key = getStatusKey(appointment.status);
-
-  const minutes =
-    event.start && event.end
-      ? (event.end.getTime() - event.start.getTime()) / 60000
-      : 30;
-
-  const short = minutes <= 30;
 
   return (
     <div
       className={`appt appt-${key}${
-        short ? " appt--short" : ""
+        isShortEvent(event.start, event.end) ? " appt--short" : ""
       }`}
       style={statusVars(key)}
     >
-      <span className="appt__patient">
-        {appointment.patientName}
-      </span>
-
-      <span className="appt__time">
-        {timeText}
-      </span>
-
-      <span className="appt__treatment">
-        {appointment.treatment}
-      </span>
+      <span className="appt__patient">{appointment.patientName}</span>
+      <span className="appt__time">{timeText}</span>
+      <span className="appt__treatment">{appointment.treatment}</span>
     </div>
   );
 }
 
-// ============================================
-// COMPONENTE PRINCIPAL
-// ============================================
+/* ==========================================
+   COMPONENTE
+========================================== */
 
 export default function AppointmentCalendar({
   appointments,
@@ -261,189 +191,102 @@ export default function AppointmentCalendar({
   onNewAppointment,
 }: Props) {
   const isMobile = useIsMobile();
-
   const calendarRef = useRef<CalendarInstance>(null);
 
   const [calendarTitle, setCalendarTitle] = useState("");
+  const [activeView, setActiveView] = useState<CalendarView>("timeGridWeek");
 
-  const [activeView, setActiveView] =
-    useState<CalendarView>("timeGridWeek");
-
-  // ============================================
-  // EVENTOS DEL CALENDARIO
-  // ============================================
+  const api = () => calendarRef.current?.getApi();
 
   const events = useMemo(
     () =>
       appointments.map((appointment) => {
-        const statusKey = getStatusKey(appointment.status);
-
-        const style = STATUS[statusKey];
+        const key = getStatusKey(appointment.status);
+        const { bg, fg } = STATUS[key];
 
         return {
           id: String(appointment.id),
-
           title: `${appointment.patientName} · ${appointment.treatment}`,
-
           start: appointment.start,
-
           end: appointment.end,
-
-          backgroundColor: style.bg,
-
-          textColor: style.fg,
-
-          editable: !LOCKED_STATUSES.includes(statusKey),
-
-          extendedProps: {
-            appointment,
-          },
+          backgroundColor: bg,
+          textColor: fg,
+          editable: !LOCKED_STATUSES.includes(key),
+          extendedProps: { appointment },
         };
       }),
     [appointments],
   );
 
-  // ============================================
-  // SELECCIONAR CITA
-  // ============================================
+  /* ---------- Vista según tamaño de pantalla ---------- */
 
-  const handleEventClick = (info: EventClickInfo) => {
-    const appointment = info.event.extendedProps
-      .appointment as Appointment;
+  useEffect(() => {
+    const calendar = api();
+    const target: CalendarView = isMobile ? "timeGridDay" : "timeGridWeek";
 
-    onSelectAppointment(appointment);
-  };
+    if (calendar && calendar.view.type !== target) {
+      calendar.changeView(target);
+    }
+  }, [isMobile]);
 
-  // ============================================
-  // SELECCIONAR HORARIO
-  // ============================================
+  /* ---------- Handlers ---------- */
 
-  const handleDateClick = (info: DateClickInfo) => {
+  const handleEventClick = (info: EventClickInfo) =>
+    onSelectAppointment(getAppointment(info.event.extendedProps));
+
+  const handleDateClick = (info: DateClickInfo) =>
     onSlotClick(info.dateStr, info.allDay);
-  };
-
-  // ============================================
-  // MOVER O REDIMENSIONAR CITA
-  // ============================================
 
   const handleMove = async (info: EventMoveInfo) => {
-    const appointment = info.event.extendedProps
-      .appointment as Appointment;
+    const appointment = getAppointment(info.event.extendedProps);
+    const start = info.event.start;
 
-    const startDate = info.event.start;
-
-    if (!startDate) {
+    if (!start) {
       info.revert();
       return;
     }
 
-    const originalDuration =
+    const duration =
       new Date(appointment.end).getTime() -
       new Date(appointment.start).getTime();
 
-    const endDate =
-      info.event.end ??
-      new Date(startDate.getTime() + originalDuration);
-
-    const range = {
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
-    };
+    const end = info.event.end ?? new Date(start.getTime() + duration);
 
     try {
-      const success = await onMoveAppointment(
-        appointment,
-        range,
-      );
+      const ok = await onMoveAppointment(appointment, {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      });
 
-      if (!success) {
-        info.revert();
-      }
+      if (!ok) info.revert();
     } catch (error) {
       console.error("Error al actualizar la cita:", error);
-
       info.revert();
     }
   };
 
-  // ============================================
-  // ACTUALIZAR TÍTULO, VISTA Y MES
-  // ============================================
-
+  /* El rango que reporta FullCalendar tiene el fin exclusivo. */
   const handleDatesSet = (info: DatesSetInfo) => {
-    setCalendarTitle(
-      info.view.title.toLocaleUpperCase("es-MX"),
-    );
-
+    setCalendarTitle(info.view.title.toLocaleUpperCase("es-MX"));
     setActiveView(info.view.type as CalendarView);
-
-    // Obtener la fecha central que FullCalendar está visualizando.
-    const currentDate = info.view.calendar.getDate();
-
-    // Consultar siempre el mes completo correspondiente.
-    const range = getMonthRange(currentDate);
-
-    onMonthChange(range.start, range.end);
-  };
-
-  // ============================================
-  // CAMBIAR VISTA AL CAMBIAR TAMAÑO DE PANTALLA
-  // ============================================
-
-  useEffect(() => {
-    const calendar = calendarRef.current?.getApi();
-
-    if (!calendar) return;
-
-    calendar.changeView(
-      isMobile ? "timeGridDay" : "timeGridWeek",
+    onMonthChange(
+      formatLocalDateTime(info.start),
+      formatLocalDateTime(info.end),
     );
-  }, [isMobile]);
-
-  // ============================================
-  // NAVEGACIÓN
-  // ============================================
-
-  const goToPrevious = () => {
-    calendarRef.current?.getApi().prev();
   };
 
-  const goToNext = () => {
-    calendarRef.current?.getApi().next();
-  };
-
-  const goToToday = () => {
-    calendarRef.current?.getApi().today();
-  };
-
-  // ============================================
-  // CAMBIAR ENTRE VISTAS
-  // ============================================
-
-  const changeCalendarView = (view: CalendarView) => {
-    calendarRef.current?.getApi().changeView(view);
-  };
-
-  // ============================================
-  // RENDER
-  // ============================================
+  /* ==========================================
+     RENDER
+  ========================================== */
 
   return (
-    <section
-      className="appointment-calendar"
-      aria-label="Calendario de citas"
-    >
-      {/* ENCABEZADO */}
-
+    <section className="appointment-calendar" aria-label="Calendario de citas">
       <header className="appt-header">
         <div>
-          <h1 className="appt-header__title">
-            Agenda de citas
-          </h1>
-
+          <h1 className="appt-header__title">Agenda de citas</h1>
           <p className="appt-header__hint">
-            Arrastra una cita para moverla o haz clic en un
-            espacio libre para crear una nueva.
+            Arrastra una cita para moverla o haz clic en un espacio libre
+            para crear una nueva.
           </p>
         </div>
 
@@ -457,53 +300,22 @@ export default function AppointmentCalendar({
         </button>
       </header>
 
-      {/* ESTADÍSTICAS */}
-
       <div className="appt-stats">
-        <div className="appt-stat appt-stat--today">
-          <span className="appt-stat__label">Citas hoy</span>
-          <span className="appt-stat__value">
-            {stats.today}
-          </span>
-        </div>
-
-        <div className="appt-stat appt-stat--pending">
-          <span className="appt-stat__label">Por confirmar</span>
-          <span className="appt-stat__value">
-            {stats.pending}
-          </span>
-        </div>
-
-        <div className="appt-stat appt-stat--confirmed">
-          <span className="appt-stat__label">
-            Próximas confirmadas
-          </span>
-          <span className="appt-stat__value">
-            {stats.upcoming}
-          </span>
-        </div>
-
-        <div className="appt-stat appt-stat--cancelled">
-          <span className="appt-stat__label">Canceladas</span>
-          <span className="appt-stat__value">
-            {stats.cancelled}
-          </span>
-        </div>
+        {STAT_CARDS.map(([field, modifier, label]) => (
+          <div key={field} className={`appt-stat appt-stat--${modifier}`}>
+            <span className="appt-stat__label">{label}</span>
+            <span className="appt-stat__value">{stats[field]}</span>
+          </div>
+        ))}
       </div>
 
-      {/* CALENDARIO */}
-
       <div className="appointment-calendar__card">
-
-        {/* BARRA PERSONALIZADA */}
-
         <div className="calendar-toolbar">
-
           <div className="calendar-toolbar__navigation">
             <button
               type="button"
               className="calendar-toolbar__arrow"
-              onClick={goToPrevious}
+              onClick={() => api()?.prev()}
               aria-label="Periodo anterior"
               title="Periodo anterior"
             >
@@ -513,7 +325,7 @@ export default function AppointmentCalendar({
             <button
               type="button"
               className="calendar-toolbar__arrow"
-              onClick={goToNext}
+              onClick={() => api()?.next()}
               aria-label="Periodo siguiente"
               title="Periodo siguiente"
             >
@@ -523,7 +335,7 @@ export default function AppointmentCalendar({
             <button
               type="button"
               className="calendar-toolbar__today"
-              onClick={goToToday}
+              onClick={() => api()?.today()}
             >
               Hoy
             </button>
@@ -534,15 +346,7 @@ export default function AppointmentCalendar({
           </h2>
 
           <div className="calendar-toolbar__views">
-
-            {(
-              [
-                ["dayGridMonth", "Mes"],
-                ["timeGridWeek", "Semana"],
-                ["timeGridDay", "Día"],
-                ["listWeek", "Agenda"],
-              ] as const
-            ).map(([view, label]) => (
+            {VIEWS.map(([view, label]) => (
               <button
                 key={view}
                 type="button"
@@ -550,22 +354,16 @@ export default function AppointmentCalendar({
                   activeView === view ? "is-active" : ""
                 }`}
                 aria-pressed={activeView === view}
-                onClick={() => changeCalendarView(view)}
+                onClick={() => api()?.changeView(view)}
               >
                 {label}
               </button>
             ))}
-
           </div>
         </div>
 
-        {/* FULLCALENDAR */}
-
         <FullCalendar
           ref={calendarRef}
-
-          timeZone="local"
-
           plugins={[
             themePlugin,
             dayGridPlugin,
@@ -573,143 +371,64 @@ export default function AppointmentCalendar({
             listPlugin,
             interactionPlugin,
           ]}
-
           locale={esLocale}
-
-          initialView={
-            isMobile ? "timeGridDay" : "timeGridWeek"
-          }
-
+          initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
           headerToolbar={false}
-          footerToolbar={false}
-
           height="100%"
-          contentHeight="100%"
-          expandRows={true}
-
-          datesSet={handleDatesSet}
-
-          firstDay={1}
-
+          expandRows
           events={events}
-
+          datesSet={handleDatesSet}
           eventContent={renderEventContent}
-
           eventClick={handleEventClick}
-
           dateClick={handleDateClick}
-
-          editable={true}
-
-          eventStartEditable={true}
-
-          eventDurationEditable={true}
-
+          editable
           eventDrop={handleMove}
-
           eventResize={handleMove}
-
-          eventTimeFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }}
-
-          slotHeaderFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }}
-
-          nowIndicator={true}
-
+          eventTimeFormat={TIME_FORMAT}
+          slotHeaderFormat={TIME_FORMAT}
+          nowIndicator
           allDaySlot={false}
-
           slotMinTime="08:00:00"
-
           slotMaxTime="20:00:00"
-
-          slotDuration="00:30:00"
-
           snapDuration="00:15:00"
-
           scrollTime="08:00:00"
-
           dayMaxEvents={isMobile ? 2 : 4}
-
-          moreLinkContent={(arg) =>
-            `+${arg.num} más`
-          }
-
-          slotEventOverlap={true}
-
-          columnEventClass={({ event }) => {
-            const minutes =
-              event.start && event.end
-                ? (event.end.getTime() -
-                    event.start.getTime()) /
-                  60000
-                : 30;
-
-            return minutes <= 30
+          moreLinkContent={(arg) => `+${arg.num} más`}
+          columnEventClass={({ event }) =>
+            isShortEvent(event.start, event.end)
               ? "gc-col-event gc-col-event--short"
-              : "gc-col-event";
-          }}
-
+              : "gc-col-event"
+          }
           rowEventClass="gc-row-event"
-
           listItemEventClass="gc-list-event"
-
           moreLinkClass="gc-more-link"
-
           slotLaneClass="gc-slot-lane"
-
           slotHeaderClass="gc-slot-label"
-
           dayHeaderClass="gc-day-header"
-
-          dayCellClass={({ isToday, date }) => {
-            const weekend =
-              date.getDay() === 0 ||
-              date.getDay() === 6;
-
-            return [
+          dayCellClass={({ isToday, date }) =>
+            [
               "gc-day-cell",
-              isToday ? "gc-day-cell--today" : "",
-              weekend ? "gc-day-cell--weekend" : "",
+              isToday && "gc-day-cell--today",
+              [0, 6].includes(date.getDay()) && "gc-day-cell--weekend",
             ]
               .filter(Boolean)
-              .join(" ");
-          }}
-
+              .join(" ")
+          }
           dayHeaderContent={(arg) => {
-            if (arg.view.type === "dayGridMonth") {
-              return arg.text.toUpperCase();
-            }
+            if (arg.view.type === "dayGridMonth") return arg.text.toUpperCase();
 
             const dow = arg.date
-              .toLocaleDateString("es-MX", {
-                weekday: "short",
-              })
-              .replace(".", "");
+              .toLocaleDateString("es-MX", { weekday: "short" })
+              .replace(".", "")
+              .toUpperCase();
 
             return (
-              <span
-                className={`gc-dh ${
-                  arg.isToday ? "gc-dh--today" : ""
-                }`}
-              >
-                <span className="gc-dh__dow">
-                  {dow.toUpperCase()}
-                </span>
-
-                <span className="gc-dh__num">
-                  {arg.date.getDate()}
-                </span>
+              <span className={`gc-dh ${arg.isToday ? "gc-dh--today" : ""}`}>
+                <span className="gc-dh__dow">{dow}</span>
+                <span className="gc-dh__num">{arg.date.getDate()}</span>
               </span>
             );
           }}
-
           noEventsText="No hay citas en este periodo"
         />
       </div>

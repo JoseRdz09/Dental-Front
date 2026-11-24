@@ -5,20 +5,38 @@ export type AppointmentStatus =
   | "Completada"
   | "Cancelada";
 
+export type AppointmentItemType =
+  | "treatment"
+  | "product"
+  | "extra";
+
+export interface AppointmentItem {
+  id: number;
+  appointmentId: number;
+  type: AppointmentItemType;
+  treatmentId: number | null;
+  productId: number | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  createdAt?: string;
+}
+
+// Información que utiliza el calendario.
 export interface Appointment {
   id: string;
 
-  // Identificadores relacionados con la cita.
   patientId: number | null;
-  treatmentId: number | null;
   dentistUserId: number | null;
 
-  // Información que muestra el calendario.
   patientName: string;
   treatment: string;
   dentist: string;
+
   start: string;
   end: string;
+
   status: AppointmentStatus;
   details: string;
 }

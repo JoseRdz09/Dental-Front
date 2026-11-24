@@ -26,6 +26,46 @@
 }
 
 /* =========================================================
+   ERRORES ALERTS
+========================================================= */
+
+.appt-modal__error {
+  padding: 14px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  margin-top: 12px;
+}
+
+.appt-modal__error-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.appt-modal__error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.appt-modal__error p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+/* =========================================================
    ENCABEZADO
 ========================================================= */
 
@@ -261,10 +301,10 @@
   min-height: 36px;
   padding: 0 14px;
   margin-left: 4px;
-  border: 1px solid #dce8e4;
+  border: 1px solid #4776e6;
   border-radius: 10px;
-  background: #f1f8f6;
-  color: var(--brand);
+  background: #f7f9fb;
+  color: #2563eb;
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -274,7 +314,7 @@
 
 .calendar-toolbar__today:hover {
   background: #e2f1ec;
-  border-color: #b8dcd2;
+  border-color: #2563eb;
 }
 
 /* Título */
@@ -645,7 +685,7 @@
 }
 
 .gc-more-link {
-  color: var(--brand);
+  color: #2563eb ;
   font-size: 11px;
   font-weight: 700;
 }

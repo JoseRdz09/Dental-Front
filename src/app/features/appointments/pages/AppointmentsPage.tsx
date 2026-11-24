@@ -1,67 +1,78 @@
-
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 import AppointmentCalendar from "../components/AppoinmentCalendar";
 import AppointmentFormModal from "../components/Appointmentformmodal";
 import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
+import type { Appointment } from "../types/appointment";
 import type { AppointmentFormValues } from "../types/appointmentForm";
 
 import { useAppointments } from "../hooks/useAppointments";
-
 import {
   appointmentToFormValues,
   slotToFormValues,
 } from "../utils/Datetime";
 
-// ============================================
-// TIPOS
-// ============================================
+/* ==========================================
+   TIPOS
+========================================== */
 
-interface ModalState {
-  mode: "create" | "edit";
-  values: AppointmentFormValues;
-  initialPatientName?: string;
-}
+type ModalState =
+  | { mode: "create"; values: AppointmentFormValues }
+  | { mode: "edit"; appointmentId: string; initialPatientName?: string };
 
 interface MonthRange {
   start: string;
   end: string;
 }
 
-// ============================================
-// SIGUIENTE HORARIO DISPONIBLE
-// ============================================
+/* ==========================================
+   UTILIDADES
+========================================== */
 
+/** Próxima hora en punto, en formato local YYYY-MM-DDTHH:mm */
 function getNextAvailableHour(): string {
-  const next = new Date();
+  const d = new Date();
+  d.setHours(d.getHours() + 1, 0, 0, 0);
 
-  next.setHours(next.getHours() + 1, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
 
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
 }
 
-// ============================================
-// COMPONENTE PRINCIPAL
-// ============================================
+function ErrorMessage({
+  message,
+  onRetry,
+  disabled,
+}: {
+  message: string;
+  onRetry: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div role="alert">
+      <p>{message}</p>
+      <button type="button" onClick={onRetry} disabled={disabled}>
+        Reintentar
+      </button>
+    </div>
+  );
+}
+
+/* ==========================================
+   COMPONENTE PRINCIPAL
+========================================== */
 
 export default function AppointmentsPage() {
-  // ============================================
-  // RANGO DEL MES VISUALIZADO
-  // ============================================
-
-  const [monthRange, setMonthRange] =
-    useState<MonthRange | null>(null);
-
-  // ============================================
-  // CONSULTAS Y ACCIONES
-  // ============================================
+  const [monthRange, setMonthRange] = useState<MonthRange | null>(null);
+  const [modal, setModal] = useState<ModalState | null>(null);
 
   const {
     appointments,
+    appointmentDetail,
+    appointmentDetailLoading,
+    appointmentDetailFetching,
     options,
     stats,
     clinicId,
@@ -74,178 +85,111 @@ export default function AppointmentsPage() {
   } = useAppointments(
     monthRange?.start,
     monthRange?.end,
+    modal?.mode === "edit" ? modal.appointmentId : null,
   );
 
-  // ============================================
-  // ESTADOS LOCALES
-  // ============================================
+  /* Valores del formulario: se derivan, no se copian a estado.
+     Solo se usa el detalle si pertenece a la cita seleccionada. */
+  const editValues = useMemo(
+    () =>
+      modal?.mode === "edit" &&
+      appointmentDetail &&
+      String(appointmentDetail.id) === modal.appointmentId
+        ? appointmentToFormValues(appointmentDetail)
+        : null,
+    [modal, appointmentDetail],
+  );
 
-  const [modal, setModal] = useState<ModalState | null>(null);
+  const formValues = modal?.mode === "create" ? modal.values : editValues;
 
-  const [saving, setSaving] = useState(false);
+  /* ---------- Handlers ---------- */
 
-  // ============================================
-  // ACTUALIZAR MES VISUALIZADO
-  // ============================================
+  const handleMonthChange = (start: string, end: string) =>
+    setMonthRange((current) =>
+      current?.start === start && current?.end === end
+        ? current
+        : { start, end },
+    );
 
-  const handleMonthChange = (
-    start: string,
-    end: string,
-  ) => {
-    setMonthRange((current) => {
-      if (
-        current?.start === start &&
-        current?.end === end
-      ) {
-        return current;
-      }
-
-      return { start, end };
-    });
-  };
-
-  // ============================================
-  // ABRIR Y CERRAR MODAL
-  // ============================================
-
-  const openModal = (newModal: ModalState) => {
+  const openModal = (next: ModalState) => {
     toast.dismiss();
-    setModal(newModal);
+    setModal(next);
   };
 
-  const closeModal = () => {
-    if (!saving) {
-      setModal(null);
-    }
+  const closeModal = () => setModal(null);
+
+  const handleEditAppointment = (appointment: Appointment) =>
+    openModal({
+      mode: "edit",
+      appointmentId: String(appointment.id),
+      initialPatientName: appointment.patientName,
+    });
+
+  /* El modal muestra sus propios errores, por eso aquí solo se
+     relanza (no se duplica el toast). */
+  const handleSubmit = async (values: AppointmentFormValues) => {
+    if (!modal) return;
+
+    const wasEdit = modal.mode === "edit";
+
+    await saveAppointment(values);
+
+    setModal(null);
+    toast.success(
+      wasEdit
+        ? "La cita se actualizó correctamente."
+        : "La cita se registró correctamente.",
+    );
   };
-
-  // ============================================
-  // GUARDAR CITA
-  // ============================================
-
-  const handleSubmit = async (
-    values: AppointmentFormValues,
-  ) => {
-    if (saving || !modal) return;
-
-    const mode = modal.mode;
-
-    setSaving(true);
-
-    try {
-      await saveAppointment(values);
-
-      setModal(null);
-
-      toast.success(
-        mode === "edit"
-          ? "La cita se actualizó correctamente."
-          : "La cita se registró correctamente.",
-      );
-    } catch (err) {
-      console.error("Error al guardar la cita:", err);
-
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "No se pudo guardar la cita. Intenta nuevamente.",
-      );
-
-      throw err;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ============================================
-  // MOVER CITA
-  // ============================================
 
   const handleMoveAppointment = async (
     appointmentId: string,
-    range: {
-      start: string;
-      end: string;
-    },
+    range: MonthRange,
   ): Promise<boolean> => {
     try {
-      const success = await moveAppointment(
-        appointmentId,
-        range,
-      );
+      const success = await moveAppointment(appointmentId, range);
 
       if (!success) {
         toast.error("No se pudo mover la cita.");
+        return false;
       }
 
-      return success;
+      toast.success("Cita reprogramada correctamente.");
+      return true;
     } catch (err) {
       console.error("Error al mover la cita:", err);
-
       toast.error("No se pudo mover la cita.");
-
       return false;
     }
   };
-
-  // ============================================
-  // REINTENTAR CONSULTAS
-  // ============================================
 
   const handleRetry = async () => {
     try {
       await reloadAppointments();
     } catch (err) {
       console.error("Error al cargar las citas:", err);
-
-      toast.error(
-        "No se pudieron cargar las citas. Intenta nuevamente.",
-      );
+      toast.error("No se pudieron cargar las citas. Intenta nuevamente.");
     }
   };
 
-  // ============================================
-  // CARGA INICIAL DE CLÍNICAS
-  // ============================================
+  /* ---------- Estados previos al render ---------- */
 
-  if (!clinicId && loading && !error) {
-    return <LoadingScreen />;
-  }
+  if (!clinicId && loading && !error) return <LoadingScreen />;
 
-  // ============================================
-  // ERROR SIN CLÍNICA DISPONIBLE
-  // ============================================
-
-  if (!clinicId && error) {
+  if (!clinicId && error)
     return (
-      <div>
-        <p role="alert">{error}</p>
-
-        <button
-          type="button"
-          onClick={() => void handleRetry()}
-          disabled={loading}
-        >
-          Reintentar
-        </button>
-      </div>
+      <ErrorMessage
+        message={error}
+        onRetry={() => void handleRetry()}
+        disabled={loading}
+      />
     );
-  }
 
-  // ============================================
-  // RENDER
-  // ============================================
+  /* ---------- Render ---------- */
 
   return (
     <>
-      {/* ESTADOS DE CARGA */}
-
-      {loading && (
-        // <p role="status" aria-live="polite">
-        //   Actualizando citas...
-        // </p>
-        <LoadingScreen />
-      )}
+      {loading && <LoadingScreen />}
 
       {statsLoading && (
         <p role="status" aria-live="polite">
@@ -253,35 +197,19 @@ export default function AppointmentsPage() {
         </p>
       )}
 
-      {/* ERROR DE CONSULTA */}
-
       {error && (
-        <div role="alert">
-          <p>{error}</p>
-
-          <button
-            type="button"
-            onClick={() => void handleRetry()}
-            disabled={loading}
-          >
-            Reintentar
-          </button>
-        </div>
+        <ErrorMessage
+          message={error}
+          onRetry={() => void handleRetry()}
+          disabled={loading}
+        />
       )}
-
-      {/* CALENDARIO */}
 
       <AppointmentCalendar
         appointments={appointments}
         stats={stats}
         onMonthChange={handleMonthChange}
-        onSelectAppointment={(appointment) =>
-          openModal({
-            mode: "edit",
-            values: appointmentToFormValues(appointment),
-            initialPatientName: appointment.patientName,
-          })
-        }
+        onSelectAppointment={handleEditAppointment}
         onSlotClick={(dateStr, allDay) =>
           openModal({
             mode: "create",
@@ -289,34 +217,48 @@ export default function AppointmentsPage() {
           })
         }
         onMoveAppointment={(appointment, range) =>
-          handleMoveAppointment(
-            String(appointment.id),
-            range,
-          )
+          handleMoveAppointment(String(appointment.id), range)
         }
         onNewAppointment={() =>
           openModal({
             mode: "create",
-            values: slotToFormValues(
-              getNextAvailableHour(),
-              false,
-            ),
+            values: slotToFormValues(getNextAvailableHour(), false),
           })
         }
       />
 
-      {/* MODAL */}
-
       {modal && clinicId !== null && (
-        <AppointmentFormModal
-          mode={modal.mode}
-          initialValues={modal.values}
-          initialPatientName={modal.initialPatientName}
-          clinicId={clinicId}
-          options={options}
-          onSubmit={handleSubmit}
-          onClose={closeModal}
-        />
+        formValues ? (
+          <AppointmentFormModal
+            key={modal.mode === "edit" ? modal.appointmentId : "new"}
+            mode={modal.mode}
+            initialValues={formValues}
+            initialPatientName={
+              modal.mode === "edit" ? modal.initialPatientName : undefined
+            }
+            clinicId={clinicId}
+            options={options}
+            onSubmit={handleSubmit}
+            onClose={closeModal}
+          />
+        ) : (
+          <div
+            className="appointment-detail-loading"
+            role="status"
+            aria-live="polite"
+          >
+            {appointmentDetailLoading || appointmentDetailFetching ? (
+              <LoadingScreen />
+            ) : (
+              <div>
+                <p>No se pudo cargar el detalle de la cita.</p>
+                <button type="button" onClick={closeModal}>
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        )
       )}
     </>
   );
