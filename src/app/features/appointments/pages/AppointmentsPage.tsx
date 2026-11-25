@@ -3,10 +3,14 @@ import toast from "react-hot-toast";
 
 import AppointmentCalendar from "../components/AppoinmentCalendar";
 import AppointmentFormModal from "../components/Appointmentformmodal";
+import PatientPaymentModal from "../../payment/components/PatientPaymentModal";
 import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 import type { Appointment } from "../types/appointment";
-import type { AppointmentFormValues } from "../types/appointmentForm";
+import type {
+  AppointmentFormValues,
+  AppointmentSubmitValues,
+} from "../types/appointmentForm";
 
 import { useAppointments } from "../hooks/useAppointments";
 import {
@@ -88,19 +92,30 @@ export default function AppointmentsPage() {
     modal?.mode === "edit" ? modal.appointmentId : null,
   );
 
-  /* Valores del formulario: se derivan, no se copian a estado.
-     Solo se usa el detalle si pertenece a la cita seleccionada. */
-  const editValues = useMemo(
+  /* Detalle de la cita seleccionada (solo si coincide con el modal abierto). */
+  const selectedDetail = useMemo(
     () =>
       modal?.mode === "edit" &&
       appointmentDetail &&
       String(appointmentDetail.id) === modal.appointmentId
-        ? appointmentToFormValues(appointmentDetail)
+        ? appointmentDetail
         : null,
     [modal, appointmentDetail],
   );
 
+  /* Valores del formulario: se derivan, no se copian a estado. */
+  const editValues = useMemo(
+    () => (selectedDetail ? appointmentToFormValues(selectedDetail) : null),
+    [selectedDetail],
+  );
+
   const formValues = modal?.mode === "create" ? modal.values : editValues;
+
+  /* Lo ya pagado de la cita (0 al crear). */
+  const alreadyPaid = selectedDetail?.paidTotal ?? 0;
+
+  /* Adeudos */
+  const [collect, setCollect] = useState<{ id: number; name: string } | null>(null);
 
   /* ---------- Handlers ---------- */
 
@@ -127,19 +142,21 @@ export default function AppointmentsPage() {
 
   /* El modal muestra sus propios errores, por eso aquí solo se
      relanza (no se duplica el toast). */
-  const handleSubmit = async (values: AppointmentFormValues) => {
+  const handleSubmit = async (values: AppointmentSubmitValues) => {
     if (!modal) return;
 
     const wasEdit = modal.mode === "edit";
+    const hadPayment = values.payment !== null;
 
     await saveAppointment(values);
 
     setModal(null);
-    toast.success(
-      wasEdit
-        ? "La cita se actualizó correctamente."
-        : "La cita se registró correctamente.",
-    );
+
+    const base = wasEdit
+      ? "La cita se actualizó correctamente"
+      : "La cita se registró correctamente";
+
+    toast.success(hadPayment ? `${base} y el pago fue registrado.` : `${base}.`);
   };
 
   const handleMoveAppointment = async (
@@ -236,8 +253,10 @@ export default function AppointmentsPage() {
             initialPatientName={
               modal.mode === "edit" ? modal.initialPatientName : undefined
             }
+            alreadyPaid={alreadyPaid}
             clinicId={clinicId}
             options={options}
+            onCollectDebt={setCollect}
             onSubmit={handleSubmit}
             onClose={closeModal}
           />
@@ -259,6 +278,16 @@ export default function AppointmentsPage() {
             )}
           </div>
         )
+      )}
+
+      {collect && clinicId !== null && (
+        <PatientPaymentModal
+          key={collect.id}
+          clinicId={clinicId}
+          patientId={collect.id}
+          patientName={collect.name}
+          onClose={() => setCollect(null)}
+        />
       )}
     </>
   );

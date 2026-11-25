@@ -13,6 +13,7 @@ import ClinicsPage from "./features/clinics/pages/ClinicsPage.tsx";
 import Clinicalteam from "./features/clinical-team/pages/ClinicalteamPage.tsx";
 import Billing from "./features/Billing/pages/Billing.tsx";
 import TreatmentsPage from "./features/treatments/pages/TreatmentsPage.tsx";
+import PaymentsPage from "./features/payment/pages/PaymentsPage.tsx";
 
 
 
@@ -43,6 +44,7 @@ export default function AppRouter() {
           <Route element={<AdminLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/patients" element={<PatientsPage />} />
+            <Route path="/payments" element={<PaymentsPage/>} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

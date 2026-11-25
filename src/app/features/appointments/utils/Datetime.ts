@@ -1,4 +1,3 @@
-
 import type {
   Appointment,
   AppointmentItem,
@@ -7,20 +6,26 @@ import type {
 import type {
   AppointmentFormValues,
   AppointmentFormItem,
+  PaymentFormValues,
 } from "../types/appointmentForm";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export const toDateInput = (date: Date) =>
-  `${date.getFullYear()}-${pad(
-    date.getMonth() + 1,
-  )}-${pad(date.getDate())}`;
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
 export const toTimeInput = (date: Date) =>
   `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
 const addMinutes = (date: Date, minutes: number) =>
   new Date(date.getTime() + minutes * 60_000);
+
+/** Pago vacío. Función (no constante) para no compartir el mismo objeto. */
+const emptyPayment = (): PaymentFormValues => ({
+  amount: "",
+  method: "cash",
+  reference: "",
+});
 
 // ==========================================
 // CREAR VALORES PARA UNA NUEVA CITA
@@ -46,6 +51,7 @@ export function slotToFormValues(
     startTime: toTimeInput(start),
     endTime: toTimeInput(end),
     status: "Pendiente",
+    payment: emptyPayment(),
   };
 }
 
@@ -90,13 +96,8 @@ export function appointmentToFormValues(
   const start = new Date(appointment.start);
   const end = new Date(appointment.end);
 
-  if (
-    Number.isNaN(start.getTime()) ||
-    Number.isNaN(end.getTime())
-  ) {
-    throw new Error(
-      "La cita contiene una fecha u horario inválido.",
-    );
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("La cita contiene una fecha u horario inválido.");
   }
 
   return {
@@ -104,9 +105,7 @@ export function appointmentToFormValues(
     patientId: appointment.patientId,
     dentistUserId: appointment.dentistUserId,
 
-    items: appointmentItemsToFormItems(
-      appointment.items,
-    ),
+    items: appointmentItemsToFormItems(appointment.items),
 
     details: appointment.details,
 
@@ -115,6 +114,10 @@ export function appointmentToFormValues(
     endTime: toTimeInput(end),
 
     status: appointment.status,
+
+    // Los pagos previos no se editan aquí: el formulario solo captura
+    // el abono nuevo. Lo ya pagado llega por `alreadyPaid`.
+    payment: emptyPayment(),
   };
 }
 
@@ -122,16 +125,9 @@ export function appointmentToFormValues(
 // CONVERTIR FECHA Y HORARIO A ISO
 // ==========================================
 
-export function formValuesToRange(
-  values: AppointmentFormValues,
-) {
+export function formValuesToRange(values: AppointmentFormValues) {
   return {
-    start: new Date(
-      `${values.date}T${values.startTime}`,
-    ).toISOString(),
-
-    end: new Date(
-      `${values.date}T${values.endTime}`,
-    ).toISOString(),
+    start: new Date(`${values.date}T${values.startTime}`).toISOString(),
+    end: new Date(`${values.date}T${values.endTime}`).toISOString(),
   };
 }

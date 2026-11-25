@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   Building2,
   CreditCard,
+  Banknote,
   LayoutDashboard,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ const ownerMenuItems = [
 const adminMenuItems = [
   { label: "Calendario", path: "/dashboard", icon: CalendarDays },
   { label: "Lista de pacientes", path: "/patients", icon: Users },
+  { label: "Pagos", path: "/payments", icon: Banknote },
   { label: "Configuración", path: "/settings", icon: Settings },
 ];
 

@@ -1,0 +1,184 @@
+.pay-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+}
+
+.pay-page__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pay-page__header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.pay-page__header p {
+  margin: 0.25rem 0 0;
+  opacity: 0.7;
+}
+
+/* ---------- Resumen ---------- */
+
+.pay-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.pay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgb(128 128 128 / 0.3);
+  border-radius: 12px;
+}
+
+.pay-card span {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.pay-card strong {
+  font-size: 1.5rem;
+}
+
+.pay-card--debt strong {
+  color: #b42318;
+}
+
+/* ---------- Filtros ---------- */
+
+.pay-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pay-filters__status {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  padding-bottom: 0.6rem;
+}
+
+.pay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.pay-field input,
+.pay-field select {
+  min-width: 200px;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgb(128 128 128 / 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+/* ---------- Tabla ---------- */
+
+.pay-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgb(128 128 128 / 0.3);
+  border-radius: 12px;
+}
+
+.pay-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pay-table th,
+.pay-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgb(128 128 128 / 0.2);
+}
+
+.pay-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.pay-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pay-table small {
+  opacity: 0.65;
+}
+
+.pay-table__num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.pay-table__debt {
+  font-weight: 700;
+  color: #b42318;
+}
+
+.pay-table__actions {
+  text-align: right !important;
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* ---------- Botones / estados ---------- */
+
+.pay-btn {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid rgb(128 128 128 / 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pay-btn--primary {
+  background: #1d6fdc;
+  border-color: #1d6fdc;
+  color: #fff;
+}
+
+.pay-btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+.pay-empty,
+.pay-alert {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed rgb(128 128 128 / 0.4);
+  border-radius: 12px;
+}
+
+.pay-empty p,
+.pay-alert p {
+  margin: 0.35rem 0 0;
+  opacity: 0.7;
+}
+
+.pay-alert button {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .pay-page {
+    padding: 1rem;
+  }
+}

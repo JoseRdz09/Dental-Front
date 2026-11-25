@@ -8,8 +8,9 @@ import type {
 } from "../types/appointment";
 
 import type {
-  AppointmentFormValues,
+  AppointmentSubmitValues,
   AppointmentFormItem,
+  PaymentMethod,
 } from "../types/appointmentForm";
 
 /* ==========================================
@@ -59,9 +60,11 @@ export type ApiAppointmentItem = {
   created_at?: string;
 };
 
+export type PaymentStatus = "unpaid" | "partial" | "paid";
+
 /**
  * Cita tal como la devuelve Laravel.
- * index, store, update y show incluyen `items`.
+ * index, store, update y show incluyen `items` y el resumen de pagos.
  */
 export type ApiAppointment = {
   id: number;
@@ -76,6 +79,12 @@ export type ApiAppointment = {
   patient: ApiPatient | null;
   dentist: ApiDentist | null;
   items?: ApiAppointmentItem[];
+
+  // Resumen de pagos (calculado en backend: total - SUM(pagos completed))
+  total?: string | number;
+  paid_total?: string | number;
+  balance?: string | number;
+  payment_status?: PaymentStatus;
 };
 
 export type ApiAppointmentStats = {
@@ -91,9 +100,17 @@ export type CalendarAppointment = Appointment & {
   title: string;
 };
 
-export type AppointmentDetail = CalendarAppointment & {
-  items: AppointmentItem[];
+export type PaymentSummary = {
+  total: number;
+  paidTotal: number;
+  balance: number;
+  paymentStatus: PaymentStatus;
 };
+
+export type AppointmentDetail = CalendarAppointment &
+  PaymentSummary & {
+    items: AppointmentItem[];
+  };
 
 /** Opciones comunes para poder cancelar peticiones (AbortController). */
 export type RequestOptions = {
@@ -117,6 +134,12 @@ export type AppointmentItemPayload =
       unit_price: number;
     };
 
+export type PaymentPayload = {
+  amount: number;
+  method: PaymentMethod;
+  reference: string | null;
+};
+
 export type AppointmentPayload = {
   clinic_id: number;
   patient_id: number;
@@ -125,6 +148,10 @@ export type AppointmentPayload = {
   end_at: string;
   status: AppointmentStatus;
   notes: string;
+  /** Solo se envía si hay un pago que registrar. */
+  payment?: PaymentPayload;
+  /** Evita duplicar el pago en reintentos o doble clic. */
+  idempotency_key?: string;
 };
 
 export type CreateAppointmentPayload = AppointmentPayload & {
@@ -196,10 +223,36 @@ function mapAppointment(appointment: ApiAppointment): CalendarAppointment {
   };
 }
 
-/** Cita + conceptos. `items` ausente se interpreta como lista vacía. */
+/**
+ * Resumen de pagos. Si el backend no lo envía (p. ej. endpoint antiguo),
+ * se deriva de los conceptos para no romper la UI.
+ */
+function mapPaymentSummary(appointment: ApiAppointment): PaymentSummary {
+  const itemsTotal = (appointment.items ?? []).reduce(
+    (sum, i) => sum + Number(i.total),
+    0,
+  );
+
+  const total =
+    appointment.total !== undefined ? Number(appointment.total) : itemsTotal;
+  const paidTotal = Number(appointment.paid_total ?? 0);
+  const balance =
+    appointment.balance !== undefined
+      ? Number(appointment.balance)
+      : Math.max(total - paidTotal, 0);
+
+  const paymentStatus: PaymentStatus =
+    appointment.payment_status ??
+    (paidTotal <= 0 ? "unpaid" : balance > 0 ? "partial" : "paid");
+
+  return { total, paidTotal, balance, paymentStatus };
+}
+
+/** Cita + conceptos + pagos. `items` ausente se interpreta como lista vacía. */
 function mapAppointmentDetail(appointment: ApiAppointment): AppointmentDetail {
   return {
     ...mapAppointment(appointment),
+    ...mapPaymentSummary(appointment),
     items: (appointment.items ?? []).map(mapAppointmentItem),
   };
 }
@@ -224,8 +277,8 @@ export async function getClinics(
 ========================================== */
 
 /**
- * El listado ya incluye los conceptos de cada cita, por lo que
- * abrir el detalle no necesita otra petición (getAppointmentDetail).
+ * El listado ya incluye los conceptos y el resumen de pagos de cada cita,
+ * por lo que abrir el detalle no necesita otra petición.
  */
 export async function getAppointments(
   clinicId: number,
@@ -257,8 +310,8 @@ export async function getAppointmentDetail(
 }
 
 /**
- * Crea la cita. El backend devuelve la cita completa
- * (paciente, dentista y conceptos): no hace falta recargar el calendario.
+ * Crea la cita (y el pago, si viene en el payload) en un solo request.
+ * El backend devuelve la cita completa: no hace falta recargar el calendario.
  */
 export async function createAppointment(
   payload: CreateAppointmentPayload,
@@ -272,7 +325,8 @@ export async function createAppointment(
 }
 
 /**
- * Actualiza la cita. El backend devuelve la cita completa actualizada.
+ * Actualiza la cita (y registra el pago, si viene en el payload).
+ * El backend devuelve la cita completa actualizada.
  */
 export async function updateAppointment(
   id: string,
@@ -394,17 +448,18 @@ function mapFormItemToPayload(
 }
 
 /**
- * Datos generales de la cita. Los conceptos se administran por separado.
+ * Datos generales de la cita + pago opcional.
+ * Los conceptos se administran por separado en edición.
  */
 export function formValuesToAppointmentPayload(
-  values: AppointmentFormValues,
+  values: AppointmentSubmitValues,
   clinicId: number,
 ): AppointmentPayload {
   if (values.patientId === null) {
     throw new Error("Selecciona un paciente.");
   }
 
-  return {
+  const payload: AppointmentPayload = {
     clinic_id: clinicId,
     patient_id: values.patientId,
     dentist_user_id: values.dentistUserId,
@@ -413,13 +468,24 @@ export function formValuesToAppointmentPayload(
     status: values.status,
     notes: values.details.trim(),
   };
+
+  if (values.payment) {
+    payload.payment = {
+      amount: values.payment.amount,
+      method: values.payment.method,
+      reference: values.payment.reference,
+    };
+    payload.idempotency_key = values.idempotencyKey;
+  }
+
+  return payload;
 }
 
 /**
- * Datos de la cita + conceptos, para crear.
+ * Datos de la cita + conceptos (+ pago opcional), para crear.
  */
 export function formValuesToPayload(
-  values: AppointmentFormValues,
+  values: AppointmentSubmitValues,
   clinicId: number,
 ): CreateAppointmentPayload {
   const base = formValuesToAppointmentPayload(values, clinicId);

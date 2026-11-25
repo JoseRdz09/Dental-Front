@@ -10,7 +10,10 @@ import {
 } from "@tanstack/react-query";
 
 import type { AppointmentStatus } from "../types/appointment";
-import type { AppointmentFormValues } from "../types/appointmentForm";
+import type {
+  AppointmentFormValues,
+  AppointmentSubmitValues,
+} from "../types/appointmentForm";
 
 import {
   addAppointmentItems,
@@ -32,6 +35,7 @@ import {
   type AppointmentDetail,
   type AppointmentItemPayload,
   type AppointmentPayload,
+  type PaymentStatus,
 } from "../services/appointmentService";
 
 /* ==========================================
@@ -117,6 +121,8 @@ function required<T>(value: T | null | undefined, message: string): T {
 
 const toTime = (value: string): number => new Date(value).getTime();
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 const sortByStart = (list: AppointmentDetail[]): AppointmentDetail[] =>
   [...list].sort((a, b) => toTime(a.start) - toTime(b.start));
 
@@ -142,7 +148,11 @@ function getNewItemPayload(
   };
 }
 
-/** ¿Cambió algún dato general? Si no, se evita el PUT. */
+/**
+ * ¿Hay algo que enviar en el PUT? Si no, se evita la petición.
+ * Un pago nuevo cuenta como cambio: sin esto, abonar a una cita
+ * ya completada (sin tocar nada más) se descartaría en silencio.
+ */
 function hasGeneralChanges(
   original: AppointmentDetail,
   payload: AppointmentPayload,
@@ -153,8 +163,24 @@ function hasGeneralChanges(
     toTime(original.start) !== toTime(payload.start_at) ||
     toTime(original.end) !== toTime(payload.end_at) ||
     original.status !== payload.status ||
-    original.details !== payload.notes
+    original.details !== payload.notes ||
+    payload.payment !== undefined
   );
+}
+
+/** Recalcula total / saldo / estado de pago a partir de los conceptos finales. */
+function withPaymentSummary(
+  appointment: AppointmentDetail,
+): AppointmentDetail {
+  const total = round2(
+    appointment.items.reduce((sum, item) => sum + Number(item.total), 0),
+  );
+  const balance = round2(Math.max(total - appointment.paidTotal, 0));
+
+  const paymentStatus: PaymentStatus =
+    appointment.paidTotal <= 0 ? "unpaid" : balance > 0 ? "partial" : "paid";
+
+  return { ...appointment, total, balance, paymentStatus };
 }
 
 /* ==========================================
@@ -299,8 +325,8 @@ export function useAppointments(
   const appointments = appointmentsQuery.data ?? EMPTY_APPOINTMENTS;
 
   /* ---------- APPOINTMENT DETAIL ----------
-     El listado ya trae los conceptos: solo se pide el detalle
-     al servidor si la cita no está en la lista (otro rango). */
+     El listado ya trae los conceptos y el resumen de pagos: solo se pide
+     el detalle al servidor si la cita no está en la lista (otro rango). */
 
   const detailFromList = useMemo(
     () =>
@@ -398,12 +424,16 @@ export function useAppointments(
   /* ==========================================
      SAVE APPOINTMENT
 
-     CREATE: POST (devuelve la cita completa).
-     UPDATE: PUT (solo si cambió algo) + conceptos nuevos/eliminados.
+     CREATE: POST (cita + conceptos + pago opcional, una sola petición).
+     UPDATE: conceptos nuevos/eliminados + PUT (solo si cambió algo o hay pago).
              Sin recargar el calendario: se usa la respuesta del servidor.
   ========================================== */
 
-  const saveMutation = useMutation<AppointmentDetail, Error, AppointmentFormValues>({
+  const saveMutation = useMutation<
+    AppointmentDetail,
+    Error,
+    AppointmentSubmitValues
+  >({
     mutationFn: async (values) => {
       const activeClinicId = required(clinicId, NO_CLINIC_MESSAGE);
 
@@ -412,11 +442,10 @@ export function useAppointments(
       if (!values.id) {
         return createAppointment(formValuesToPayload(values, activeClinicId));
       }
-      
+
       /* ---------- ACTUALIZAR ---------- */
 
       const id = String(values.id);
-      
 
       const original = findAppointmentInCache(queryClient, activeClinicId, id);
 
@@ -488,8 +517,9 @@ export function useAppointments(
 
       try {
         // El backend no permite editar conceptos de citas cerradas:
-        // si la cita pasa a Completada/Cancelada, los conceptos van primero;
-        // si se reabre o sigue abierta, primero el estado.
+        // si la cita pasa a Completada/Cancelada, los conceptos van primero
+        // (y el PUT, con el pago, al final: el total ya incluye los conceptos
+        // nuevos); si se reabre o sigue abierta, primero el estado.
         if (CLOSED_STATUSES.has(values.status)) {
           await saveItems();
           await saveGeneral();
@@ -507,10 +537,12 @@ export function useAppointments(
 
       const removedSet = new Set(removedIds);
 
-      return {
+      // Total, saldo y estado de pago se recalculan con los conceptos finales
+      // (el PUT pudo ejecutarse antes de agregar/quitar conceptos).
+      return withPaymentSummary({
         ...saved,
         items: baseItems.filter((item) => !removedSet.has(Number(item.id))),
-      };
+      });
     },
 
     onSuccess: (appointment) => {
@@ -538,6 +570,7 @@ export function useAppointments(
         throw new Error("No se encontró la información de la cita.");
       }
 
+      // Sin `payment`: mover una cita nunca registra pagos.
       return updateAppointment(id, {
         clinic_id: activeClinicId,
         patient_id: appointment.patientId,
@@ -617,7 +650,7 @@ export function useAppointments(
   const { mutateAsync: moveAsync } = moveMutation;
 
   const saveAppointment = useCallback(
-    (values: AppointmentFormValues) => saveAsync(values),
+    (values: AppointmentSubmitValues) => saveAsync(values),
     [saveAsync],
   );
 

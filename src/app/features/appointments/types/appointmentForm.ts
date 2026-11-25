@@ -4,7 +4,6 @@ import type {
   AppointmentStatus,
 } from "./appointment";
 
-
 export type AppointmentFormItem =
   | {
       id?: number;
@@ -50,3 +49,23 @@ export interface ApiError {
   };
   message?: string;
 }
+
+// Payment
+
+export type PaymentMethod = "cash" | "card" | "transfer";
+
+export interface PaymentFormValues {
+  amount: string;
+  method: PaymentMethod;
+  reference: string;
+}
+
+export interface AppointmentFormValues {
+  // ...tus campos actuales (patientId, dentistUserId, date, startTime, endTime, status, details, items)
+  payment: PaymentFormValues;   // <- agrega esta línea
+}
+
+export type AppointmentSubmitValues = Omit<AppointmentFormValues, "payment"> & {
+  payment: { amount: number; method: PaymentMethod; reference: string | null } | null;
+  idempotencyKey: string;
+};

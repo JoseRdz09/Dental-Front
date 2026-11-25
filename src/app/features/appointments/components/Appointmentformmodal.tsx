@@ -2,9 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { STATUS_OPTIONS } from "../constants/Appointmentstatus";
+import PatientDebtNotice from "../../payment/components/PatientDebtNotice";
+import AppointmentPaymentFields, {
+  toCents,
+} from "../../payment/components/AppointmentPaymentFields";
 import type {
   AppointmentFormValues,
   AppointmentFormItem,
+  AppointmentSubmitValues,
+  PaymentFormValues,
   ApiError,
 } from "../types/appointmentForm";
 import type { ApiAppointmentOptions } from "../services/appointmentService";
@@ -19,7 +25,10 @@ interface Props {
   options: ApiAppointmentOptions;
   clinicId: number;
   initialPatientName?: string;
-  onSubmit: (values: AppointmentFormValues) => Promise<void> | void;
+  /** Suma de pagos `completed` de esta cita (0 al crear). */
+  alreadyPaid?: number;
+  onCollectDebt?: (patient: { id: number; name: string }) => void;
+  onSubmit: (values: AppointmentSubmitValues) => Promise<void> | void;
   onClose: () => void;
 }
 
@@ -31,6 +40,15 @@ const SEARCH_DEBOUNCE = 300;
 const STEP = 5;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** Debe coincidir con el valor de STATUS_OPTIONS / AppointmentStatus. */
+const PAYABLE_STATUS = "Completada";
+
+const EMPTY_PAYMENT: PaymentFormValues = {
+  amount: "",
+  method: "cash",
+  reference: "",
+};
+
 const FIELD_LABELS: Record<string, string> = {
   patient_id: "Paciente",
   dentist_user_id: "Dentista",
@@ -40,6 +58,11 @@ const FIELD_LABELS: Record<string, string> = {
   status: "Estado",
   notes: "Detalles",
   items: "Conceptos",
+  payment: "Pago",
+  "payment.amount": "Monto del pago",
+  "payment.method": "Método de pago",
+  "payment.reference": "Referencia del pago",
+  idempotency_key: "Identificador del pago",
 };
 
 const STATUS_MESSAGES: Record<number, string> = {
@@ -95,6 +118,7 @@ const normalizeValues = (v: AppointmentFormValues): AppointmentFormValues => ({
   ...v,
   patientId: v.patientId == null ? null : Number(v.patientId),
   dentistUserId: v.dentistUserId == null ? null : Number(v.dentistUserId),
+  payment: v.payment ?? EMPTY_PAYMENT,
   items: (v.items ?? []).map((item): AppointmentFormItem => {
     const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
 
@@ -172,6 +196,8 @@ export default function AppointmentFormModal({
   options,
   clinicId,
   initialPatientName = "",
+  alreadyPaid = 0,
+  onCollectDebt,
   onSubmit,
   onClose,
 }: Props) {
@@ -183,6 +209,9 @@ export default function AppointmentFormModal({
 
   const [extraDescription, setExtraDescription] = useState("");
   const [extraUnitPrice, setExtraUnitPrice] = useState("");
+
+  // Una sola clave por apertura del modal: los reintentos no duplican el pago.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   /* ---------- Búsqueda de pacientes ---------- */
 
@@ -269,10 +298,32 @@ export default function AppointmentFormModal({
     (r) => r.item.type === "treatment" && r.inactive,
   );
 
+  /* ---------- Pago ---------- */
+
+  // Solo informativo: el backend recalcula el total desde los conceptos.
+  const showPayment = values.status === PAYABLE_STATUS;
+  const pendingCents = Math.max(
+    toCents(estimatedTotal) - toCents(alreadyPaid),
+    0,
+  );
+
+  const excludeAppointmentId =
+  isEdit && initialValues.id && Number.isFinite(Number(initialValues.id))
+    ? Number(initialValues.id)
+    : undefined;
+
   /* ---------- Handlers ---------- */
 
   const patch = (changes: Partial<AppointmentFormValues>) => {
     setValues((prev) => ({ ...prev, ...changes }));
+    setError(null);
+  };
+
+  const patchPayment = (changes: Partial<PaymentFormValues>) => {
+    setValues((prev) => ({
+      ...prev,
+      payment: { ...prev.payment, ...changes },
+    }));
     setError(null);
   };
 
@@ -401,6 +452,16 @@ export default function AppointmentFormModal({
     if (endTime <= startTime)
       return "La hora de finalización debe ser posterior a la hora de inicio.";
 
+    if (showPayment && values.payment.amount.trim() !== "") {
+      const cents = toCents(values.payment.amount);
+
+      if (!Number.isFinite(cents) || cents <= 0)
+        return "Ingresa un monto de pago válido.";
+
+      if (cents > pendingCents)
+        return "El pago no puede ser mayor al saldo pendiente.";
+    }
+
     return null;
   };
 
@@ -419,7 +480,29 @@ export default function AppointmentFormModal({
       setError(null);
 
       const normalized = normalizeValues(values);
-      await onSubmit({ ...normalized, details: normalized.details.trim() });
+
+      // Si el estado no es "Completada", el pago se ignora aunque haya texto escrito.
+      const paymentCents =
+        showPayment && values.payment.amount.trim() !== ""
+          ? toCents(values.payment.amount)
+          : 0;
+
+      await onSubmit({
+        ...normalized,
+        details: normalized.details.trim(),
+        payment:
+          paymentCents > 0
+            ? {
+                amount: paymentCents / 100,
+                method: values.payment.method,
+                reference:
+                  values.payment.method === "cash"
+                    ? null
+                    : values.payment.reference.trim() || null,
+              }
+            : null,
+        idempotencyKey,
+      });
     } catch (err: unknown) {
       console.error("Error al guardar la cita:", err);
       setError(getAppointmentError(err));
@@ -432,6 +515,7 @@ export default function AppointmentFormModal({
      RENDER
   ========================================== */
 
+  
   return (
     <dialog
       ref={dialogRef}
@@ -444,375 +528,472 @@ export default function AppointmentFormModal({
       }}
     >
       <form className="appt-modal__form" onSubmit={handleSubmit} noValidate>
-        <h2 id="appt-modal-title" className="appt-modal__title">
-          {isEdit ? "Editar cita" : "Nueva cita"}
-        </h2>
+        {/* ENCABEZADO */}
+        <header className="appt-modal__header">
+          <div>
+            <h2 id="appt-modal-title">
+              {isEdit ? "Editar cita" : "Nueva cita"}
+            </h2>
+            <p>Completa la información de la cita del paciente.</p>
+          </div>
 
-        {/* PACIENTE */}
-        <div className="appt-field">
-          <span>Paciente</span>
-
-          <div
-            className="patient-search"
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                setShowResults(false);
-            }}
+          <button
+            type="button"
+            className="appt-modal__close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Cerrar modal"
           >
-            <input
-              className="patient-search__input"
-              type="text"
-              value={patientSearch}
-              onChange={(e) => {
-                setPatientSearch(e.target.value);
-                setShowResults(true);
-                patch({ patientId: null });
-              }}
-              onFocus={() => patientSearch.trim() && setShowResults(true)}
-              placeholder="Buscar paciente..."
-              autoComplete="off"
-              aria-label="Paciente"
-              disabled={saving}
-            />
+            ×
+          </button>
+        </header>
 
-            {showResults && patientSearch.trim() !== "" && (
-              <div className="patient-search-results">
-                {patientsLoading && <LoadingScreen />}
+        {/* CONTENIDO PRINCIPAL: DOS COLUMNAS */}
+        <div className="appt-modal__grid">
 
-                {!patientsLoading && patientsError && (
-                  <div className="patient-search-results__empty">
-                    No se pudieron cargar los pacientes.
-                  </div>
-                )}
+          {/* COLUMNA IZQUIERDA */}
+          <div className="appt-column">
 
-                {!patientsLoading &&
-                  !patientsError &&
-                  patients.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={saving}
-                      onClick={() => {
-                        patch({ patientId: Number(p.id) });
-                        setPatientSearch(`${p.first_name} ${p.last_name}`.trim());
-                        setShowResults(false);
-                      }}
-                    >
-                      {p.first_name} {p.last_name}
-                    </button>
-                  ))}
+            {/* PACIENTE */}
+            <section className="appt-section">
+              <div className="appt-section__heading">
+                <span className="appt-section__number">01</span>
+                <div>
+                  <h3>Información del paciente</h3>
+                  <p>Selecciona al paciente y al responsable.</p>
+                </div>
+              </div>
 
-                {!patientsLoading &&
-                  !patientsError &&
-                  patients.length === 0 && (
-                    <div className="patient-search-results__empty">
-                      No se encontraron pacientes.
+              <div className="appt-field">
+                <label htmlFor="appt-patient">Paciente</label>
+
+                <div
+                  className="patient-search"
+                  onBlur={(e) => {
+                    if (
+                      !e.currentTarget.contains(
+                        e.relatedTarget as Node | null
+                      )
+                    ) {
+                      setShowResults(false);
+                    }
+                  }}
+                >
+                  <input
+                    id="appt-patient"
+                    className="patient-search__input"
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => {
+                      setPatientSearch(e.target.value);
+                      setShowResults(true);
+                      patch({ patientId: null });
+                    }}
+                    onFocus={() =>
+                      patientSearch.trim() && setShowResults(true)
+                    }
+                    placeholder="Buscar paciente..."
+                    autoComplete="off"
+                    disabled={saving}
+                  />
+
+                  {showResults && patientSearch.trim() !== "" && (
+                    <div className="patient-search-results">
+                      {patientsLoading && <LoadingScreen />}
+
+                      {!patientsLoading && patientsError && (
+                        <div className="patient-search-results__empty">
+                          No se pudieron cargar los pacientes.
+                        </div>
+                      )}
+
+                      {!patientsLoading &&
+                        !patientsError &&
+                        patients.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            disabled={saving}
+                            onClick={() => {
+                              patch({ patientId: Number(p.id) });
+                              setPatientSearch(
+                                `${p.first_name} ${p.last_name}`.trim()
+                              );
+                              setShowResults(false);
+                            }}
+                          >
+                            {p.first_name} {p.last_name}
+                          </button>
+                        ))}
+
+                      {!patientsLoading &&
+                        !patientsError &&
+                        patients.length === 0 && (
+                          <div className="patient-search-results__empty">
+                            No se encontraron pacientes.
+                          </div>
+                        )}
                     </div>
                   )}
+                </div>
               </div>
-            )}
+
+              {/* AVISO DE ADEUDO */}
+              {values.patientId !== null && (
+                <div className="appt-debt-area">
+                  <PatientDebtNotice
+                    clinicId={clinicId}
+                    patientId={values.patientId}
+                    excludeAppointmentId={excludeAppointmentId}
+                    onCollect={() =>
+                      onCollectDebt?.({
+                        id: values.patientId!,
+                        name: patientSearch.trim(),
+                      })
+                    }
+                    formatCurrency={formatCurrency}
+                    disabled={saving || !onCollectDebt}
+                  />
+                </div>
+              )}
+
+              <label className="appt-field">
+                <span>Dentista</span>
+                <select
+                  value={values.dentistUserId ?? ""}
+                  onChange={(e) =>
+                    patch({
+                      dentistUserId: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                  disabled={saving}
+                >
+                  <option value="">Sin asignar</option>
+                  {options.dentists.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </section>
+
+            {/* PROGRAMACIÓN */}
+            <section className="appt-section">
+              <div className="appt-section__heading">
+                <span className="appt-section__number">02</span>
+                <div>
+                  <h3>Programación</h3>
+                  <p>Fecha y horario de atención.</p>
+                </div>
+              </div>
+
+              <label className="appt-field">
+                <span>Fecha</span>
+                <input
+                  type="date"
+                  value={values.date}
+                  min={minDate}
+                  onChange={handleDateChange}
+                  disabled={saving}
+                  required
+                />
+              </label>
+
+              <div className="appt-time-grid">
+                <label className="appt-field">
+                  <span>Hora de inicio</span>
+                  <input
+                    type="time"
+                    step={300}
+                    min={minStartTime}
+                    value={values.startTime}
+                    onChange={handleStartTimeChange}
+                    disabled={saving || noMoreSlotsToday}
+                    required
+                  />
+                </label>
+
+                <label className="appt-field">
+                  <span>Hora de finalización</span>
+                  <input
+                    type="time"
+                    step={300}
+                    min={minEndTime}
+                    value={values.endTime}
+                    onChange={setField("endTime")}
+                    disabled={saving || !values.startTime}
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className="appt-field">
+                <span>Estado de la cita</span>
+                <select
+                  value={values.status}
+                  onChange={setField("status")}
+                  disabled={saving}
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {noMoreSlotsToday && (
+                <p className="appt-inline-warning" role="status">
+                  Ya no hay horarios disponibles para hoy. Selecciona otro día.
+                </p>
+              )}
+                        </section>
+
+            {/* DETALLES ADICIONALES */}
+            <section className="appt-section appt-details">
+              <div className="appt-section__heading">
+                <span className="appt-section__number">03</span>
+                <div>
+                  <h3>Detalles adicionales</h3>
+                  <p>Observaciones opcionales sobre la cita.</p>
+                </div>
+              </div>
+
+              <label className="appt-field">
+                <span>Observaciones</span>
+                <textarea
+                  rows={3}
+                  value={values.details}
+                  onChange={setField("details")}
+                  placeholder="Escribe observaciones sobre la cita..."
+                  disabled={saving}
+                />
+              </label>
+            </section>
           </div>
-        </div>
 
-        {/* DENTISTA */}
-        <label className="appt-field">
-          <span>Dentista</span>
-          <select
-            value={values.dentistUserId ?? ""}
-            onChange={(e) =>
-              patch({
-                dentistUserId: e.target.value ? Number(e.target.value) : null,
-              })
-            }
-            disabled={saving}
-          >
-            <option value="">Sin asignar</option>
-            {options.dentists.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
 
-        {/* CONCEPTOS */}
-        <section className="appt-items">
-          <div className="appt-section-header">
-            <div>
-              <h3>Conceptos de la cita</h3>
-              <p>Tratamientos y cargos asociados a esta cita.</p>
-            </div>
+          {/* COLUMNA DERECHA */}
+          <div className="appt-column">
 
-            <span className="appt-items__count">
-              {values.items.length}{" "}
-              {values.items.length === 1 ? "concepto" : "conceptos"}
-            </span>
-          </div>
+            {/* CONCEPTOS */}
+            <section className="appt-section appt-section--items">
+              <div className="appt-section__heading">
+                <span className="appt-section__number">04</span>
+                <div>
+                  <h3>Conceptos de la cita</h3>
+                  <p>Tratamientos y cargos adicionales.</p>
+                </div>
 
-          <div className="appt-items__panel">
-            <div className="appt-items__panel-header">
-              <div className="appt-items__panel-icon">
-                <span>+</span>
+                <span className="appt-items__count">
+                  {values.items.length}
+                </span>
               </div>
-              <div>
-                <h4>Agregar tratamiento</h4>
-                <p>Selecciona un tratamiento del catálogo.</p>
-              </div>
-            </div>
 
-            <label className="appt-field">
-              <span>Tratamiento disponible</span>
-              <select
-                value=""
-                onChange={(e) => handleAddTreatment(e.target.value)}
-                disabled={saving || availableTreatments.length === 0}
-              >
-                <option value="">
-                  {availableTreatments.length === 0
-                    ? "No hay tratamientos disponibles"
-                    : "Selecciona un tratamiento..."}
-                </option>
-                {availableTreatments.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} — {formatCurrency(Number(t.price))}
+              {/* AGREGAR TRATAMIENTO */}
+              <label className="appt-field">
+                <span>Agregar tratamiento</span>
+                <select
+                  value=""
+                  onChange={(e) => handleAddTreatment(e.target.value)}
+                  disabled={saving || availableTreatments.length === 0}
+                >
+                  <option value="">
+                    {availableTreatments.length === 0
+                      ? "No hay tratamientos disponibles"
+                      : "Selecciona un tratamiento..."}
                   </option>
-                ))}
-              </select>
-            </label>
-          </div>
 
-          <div className="appt-items__panel">
-            <div className="appt-items__panel-header">
-              <div className="appt-items__panel-icon appt-items__panel-icon--extra">
-                <span>$</span>
-              </div>
-              <div>
-                <h4>Cargo adicional</h4>
-                <p>Agrega materiales u otros conceptos.</p>
-              </div>
-            </div>
-
-            <div className="appt-extra-grid">
-              <label className="appt-field">
-                <span>Descripción</span>
-                <input
-                  type="text"
-                  value={extraDescription}
-                  onChange={(e) => setExtraDescription(e.target.value)}
-                  placeholder="Ej. Material adicional"
-                  maxLength={255}
-                  disabled={saving}
-                />
+                  {availableTreatments.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} — {formatCurrency(Number(t.price))}
+                    </option>
+                  ))}
+                </select>
               </label>
 
-              <label className="appt-field">
-                <span>Precio (MXN)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={extraUnitPrice}
-                  onChange={(e) => setExtraUnitPrice(e.target.value)}
-                  placeholder="0.00"
-                  disabled={saving}
-                />
-              </label>
-            </div>
+              {/* AGREGAR CARGO */}
+              <div className="appt-extra-box">
+                <div className="appt-extra-box__heading">
+                  <strong>Cargo adicional</strong>
+                  <span>Materiales u otros conceptos.</span>
+                </div>
 
-            <div className="appt-items__add-action">
-              <button
-                type="button"
-                className="appt-btn appt-btn--secondary"
-                onClick={handleAddExtra}
-                disabled={saving}
-              >
-                + Agregar cargo
-              </button>
-            </div>
-          </div>
-
-          <div className="appt-items__list">
-            <div className="appt-items__list-header">
-              <h4>Conceptos agregados</h4>
-            </div>
-
-            {rows.length === 0 ? (
-              <div className="appt-items__empty">
-                <div className="appt-items__empty-icon">+</div>
-                <strong>Sin conceptos todavía</strong>
-                <p>Selecciona un tratamiento o agrega un cargo adicional.</p>
-              </div>
-            ) : (
-              <div className="appt-items__table">
-                {rows.map(({ item, description, unitPrice, inactive }, i) => (
-                  <div
-                    className="appt-items__item"
-                    key={`${item.type}-${item.id ?? i}`}
-                  >
-                    <div className="appt-items__item-info">
-                      <strong>{description}</strong>
-
-                      <span>
-                        <span
-                          className={`appt-item-badge ${
-                            item.type === "treatment"
-                              ? "appt-item-badge--treatment"
-                              : "appt-item-badge--extra"
-                          }`}
-                        >
-                          {ITEM_LABELS[item.type] ?? ITEM_LABELS.extra}
-                        </span>
-
-                        {inactive && (
-                          <span className="appt-item-inactive">
-                            Inactivo o no disponible
-                          </span>
-                        )}
-                      </span>
-
-                      {unitPrice === null && (
-                        <span className="appt-item-warning">
-                          Este tratamiento ya no está disponible en el
-                          catálogo.
-                        </span>
-                      )}
-                    </div>
-
-                    <strong className="appt-items__total">
-                      {unitPrice === null
-                        ? "—"
-                        : formatCurrency(
-                            unitPrice * (Number(item.quantity) || 1),
-                          )}
-                    </strong>
-
-                    <button
-                      type="button"
-                      className="appt-items__remove"
-                      onClick={() => handleRemoveItem(i)}
+                <div className="appt-extra-grid">
+                  <label className="appt-field">
+                    <span>Descripción</span>
+                    <input
+                      type="text"
+                      value={extraDescription}
+                      onChange={(e) => setExtraDescription(e.target.value)}
+                      placeholder="Ej. Material"
+                      maxLength={255}
                       disabled={saving}
-                      aria-label={`Eliminar ${description}`}
-                      title="Eliminar concepto"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                    />
+                  </label>
+
+                  <label className="appt-field">
+                    <span>Precio</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={extraUnitPrice}
+                      onChange={(e) => setExtraUnitPrice(e.target.value)}
+                      placeholder="0.00"
+                      disabled={saving}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  className="appt-btn appt-btn--secondary appt-add-extra"
+                  onClick={handleAddExtra}
+                  disabled={saving}
+                >
+                  + Agregar cargo
+                </button>
               </div>
+
+              {/* LISTA DE CONCEPTOS */}
+              <div className="appt-items__list">
+                <div className="appt-items__list-header">
+                  <h4>Conceptos agregados</h4>
+                </div>
+
+                {rows.length === 0 ? (
+                  <div className="appt-items__empty">
+                    <span>+</span>
+                    <strong>Sin conceptos todavía</strong>
+                    <p>Agrega un tratamiento o cargo adicional.</p>
+                  </div>
+                ) : (
+                  <div className="appt-items__table">
+                    {rows.map(
+                      ({ item, description, unitPrice, inactive }, i) => (
+                        <div
+                          className="appt-items__item"
+                          key={`${item.type}-${item.id ?? i}`}
+                        >
+                          <div className="appt-items__item-info">
+                            <strong>{description}</strong>
+
+                            <div className="appt-items__item-meta">
+                              <span
+                                className={`appt-item-badge appt-item-badge--${
+                                  item.type === "treatment"
+                                    ? "treatment"
+                                    : "extra"
+                                }`}
+                              >
+                                {ITEM_LABELS[item.type] ?? ITEM_LABELS.extra}
+                              </span>
+
+                              {inactive && (
+                                <span className="appt-item-inactive">
+                                  No disponible
+                                </span>
+                              )}
+                            </div>
+
+                            {unitPrice === null && (
+                              <span className="appt-item-warning">
+                                Este tratamiento ya no está disponible.
+                              </span>
+                            )}
+                          </div>
+
+                          <strong className="appt-items__total">
+                            {unitPrice === null
+                              ? "—"
+                              : formatCurrency(
+                                  unitPrice * (Number(item.quantity) || 1)
+                                )}
+                          </strong>
+
+                          <button
+                            type="button"
+                            className="appt-items__remove"
+                            onClick={() => handleRemoveItem(i)}
+                            disabled={saving}
+                            aria-label={`Eliminar ${description}`}
+                            title="Eliminar concepto"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* TOTAL */}
+              <div className="appt-items__summary">
+                <div>
+                  <span>Total estimado</span>
+                  <small>
+                    {values.items.length}{" "}
+                    {values.items.length === 1 ? "concepto" : "conceptos"}
+                  </small>
+                </div>
+
+                <strong>{formatCurrency(estimatedTotal)}</strong>
+              </div>
+
+              {hasUnavailableTreatment && (
+                <p className="appt-inline-warning">
+                  Hay tratamientos que ya no están disponibles en el catálogo.
+                  Se conservarán como conceptos existentes.
+                </p>
+              )}
+            </section>
+
+            {/* PAGO */}
+            {showPayment && (
+              <section className="appt-section appt-payment-area">
+                <div className="appt-section__heading">
+                  <span className="appt-section__number">05</span>
+                  <div>
+                    <h3>Registro de pago</h3>
+                    <p>Registra el importe recibido.</p>
+                  </div>
+                </div>
+
+                <AppointmentPaymentFields
+                  total={estimatedTotal}
+                  alreadyPaid={alreadyPaid}
+                  value={values.payment}
+                  onChange={patchPayment}
+                  formatCurrency={formatCurrency}
+                  disabled={saving}
+                />
+              </section>
             )}
           </div>
-
-          <div className="appt-items__summary">
-            <div>
-              <span>Total estimado</span>
-              <small>
-                {values.items.length}{" "}
-                {values.items.length === 1
-                  ? "concepto registrado"
-                  : "conceptos registrados"}
-              </small>
-            </div>
-            <strong>{formatCurrency(estimatedTotal)}</strong>
-          </div>
-
-          {hasUnavailableTreatment && (
-            <p className="appt-items__warning">
-              Hay tratamientos que ya no están disponibles en el catálogo
-              actual. Se conservarán como conceptos existentes.
-            </p>
-          )}
-        </section>
-
-        {/* FECHA Y HORARIO */}
-        <div className="appt-row">
-          <label className="appt-field">
-            <span>Fecha</span>
-            <input
-              type="date"
-              value={values.date}
-              min={minDate}
-              onChange={handleDateChange}
-              disabled={saving}
-              required
-            />
-          </label>
-
-          <label className="appt-field">
-            <span>Inicio</span>
-            <input
-              type="time"
-              step={300}
-              min={minStartTime}
-              value={values.startTime}
-              onChange={handleStartTimeChange}
-              disabled={saving || noMoreSlotsToday}
-              required
-            />
-          </label>
-
-          <label className="appt-field">
-            <span>Fin</span>
-            <input
-              type="time"
-              step={300}
-              min={minEndTime}
-              value={values.endTime}
-              onChange={setField("endTime")}
-              disabled={saving || !values.startTime}
-              required
-            />
-          </label>
         </div>
-
-        {noMoreSlotsToday && (
-          <p className="appt-modal__error" role="status">
-            Ya no hay horarios disponibles para hoy. Selecciona otro día.
-          </p>
-        )}
-
-        {/* ESTADO */}
-        <label className="appt-field">
-          <span>Estado</span>
-          <select
-            value={values.status}
-            onChange={setField("status")}
-            disabled={saving}
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* DETALLES */}
-        <label className="appt-field">
-          <span>Detalles (opcional)</span>
-          <textarea
-            rows={3}
-            value={values.details}
-            onChange={setField("details")}
-            disabled={saving}
-          />
-        </label>
 
         {/* ERROR */}
         {error && (
-          <div className="appt-modal__error" role="alert" aria-live="assertive">
-            <div className="appt-modal__error-header">
-              <span className="appt-modal__error-icon">!</span>
-              <strong>No se pudo guardar la cita</strong>
-            </div>
+          <div
+            className="appt-modal__error"
+            role="alert"
+            aria-live="assertive"
+          >
+            <strong>No se pudo guardar la cita</strong>
             <p>{error}</p>
           </div>
         )}
 
         {/* ACCIONES */}
-        <div className="appt-modal__actions">
+        <footer className="appt-modal__actions">
           <button
             type="button"
-            className="appt-btn"
+            className="appt-btn appt-btn--cancel"
             onClick={onClose}
             disabled={saving}
           >
@@ -825,13 +1006,14 @@ export default function AppointmentFormModal({
             disabled={saving || noMoreSlotsToday}
           >
             {saving
-              ? "Guardando…"
+              ? "Guardando..."
               : isEdit
                 ? "Guardar cambios"
                 : "Guardar cita"}
           </button>
-        </div>
+        </footer>
       </form>
     </dialog>
   );
+
 }
