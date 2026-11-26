@@ -42,6 +42,10 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Debe coincidir con el valor de STATUS_OPTIONS / AppointmentStatus. */
 const PAYABLE_STATUS = "Completada";
+const CANCELLED_STATUS = "Cancelada";
+
+/** Estados finales: la cita solo se puede consultar. */
+const LOCKED_STATUSES: string[] = [PAYABLE_STATUS, CANCELLED_STATUS];
 
 const EMPTY_PAYMENT: PaymentFormValues = {
   amount: "",
@@ -213,6 +217,19 @@ export default function AppointmentFormModal({
   // Una sola clave por apertura del modal: los reintentos no duplican el pago.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
+  const isEdit = mode === "edit";
+
+  /* ---------- Reglas de solo lectura ---------- */
+
+  // Se evalúa contra el estado ORIGINAL de la cita, no contra el del select.
+  const readOnly = isEdit && LOCKED_STATUSES.includes(initialValues.status);
+
+  // Una vez creada la cita, el paciente no se puede cambiar.
+  const patientLocked = isEdit;
+
+  // Bloqueo general de campos (guardando o cita en modo lectura).
+  const locked = saving || readOnly;
+
   /* ---------- Búsqueda de pacientes ---------- */
 
   const [patientSearch, setPatientSearch] = useState(initialPatientName);
@@ -221,11 +238,14 @@ export default function AppointmentFormModal({
 
   useEffect(() => {
     const t = window.setTimeout(
-      () => setDebouncedSearch(showResults ? patientSearch.trim() : ""),
+      () =>
+        setDebouncedSearch(
+          showResults && !patientLocked ? patientSearch.trim() : "",
+        ),
       SEARCH_DEBOUNCE,
     );
     return () => window.clearTimeout(t);
-  }, [patientSearch, showResults]);
+  }, [patientSearch, showResults, patientLocked]);
 
   const {
     patients,
@@ -247,7 +267,6 @@ export default function AppointmentFormModal({
   const nextSlotIsToday = getLocalDate(nextSlot) === today;
   const nextSlotTime = getLocalTime(nextSlot);
 
-  const isEdit = mode === "edit";
   const isOriginalDate = isEdit && values.date === initialValues.date;
   const isOriginalStart =
     isOriginalDate && values.startTime === initialValues.startTime;
@@ -259,7 +278,8 @@ export default function AppointmentFormModal({
   const minStartTime =
     isToday && !isOriginalStart && nextSlotIsToday ? nextSlotTime : "00:00";
 
-  const noMoreSlotsToday = isToday && !nextSlotIsToday && !isOriginalStart;
+  const noMoreSlotsToday =
+    !readOnly && isToday && !nextSlotIsToday && !isOriginalStart;
 
   const minEndTime = values.startTime ? addStep(values.startTime) : "00:00";
 
@@ -308,18 +328,20 @@ export default function AppointmentFormModal({
   );
 
   const excludeAppointmentId =
-  isEdit && initialValues.id && Number.isFinite(Number(initialValues.id))
-    ? Number(initialValues.id)
-    : undefined;
+    isEdit && initialValues.id && Number.isFinite(Number(initialValues.id))
+      ? Number(initialValues.id)
+      : undefined;
 
   /* ---------- Handlers ---------- */
 
   const patch = (changes: Partial<AppointmentFormValues>) => {
+    if (readOnly) return;
     setValues((prev) => ({ ...prev, ...changes }));
     setError(null);
   };
 
   const patchPayment = (changes: Partial<PaymentFormValues>) => {
+    if (readOnly) return;
     setValues((prev) => ({
       ...prev,
       payment: { ...prev.payment, ...changes },
@@ -337,12 +359,13 @@ export default function AppointmentFormModal({
       patch({ [field]: e.target.value });
 
   const addItem = (item: AppointmentFormItem) => {
+    if (readOnly) return;
     setValues((prev) => ({ ...prev, items: [...prev.items, item] }));
     setError(null);
   };
 
   const handleAddTreatment = (id: string) => {
-    if (!id) return;
+    if (readOnly || !id) return;
     const treatmentId = Number(id);
     const treatment = options.treatments.find(
       (t) => Number(t.id) === treatmentId,
@@ -357,6 +380,8 @@ export default function AppointmentFormModal({
   };
 
   const handleAddExtra = () => {
+    if (readOnly) return;
+
     const description = extraDescription.trim();
     const unitPrice = Number(extraUnitPrice);
 
@@ -467,7 +492,7 @@ export default function AppointmentFormModal({
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (saving) return;
+    if (saving || readOnly) return;
 
     const validationError = getValidationError();
     if (validationError) {
@@ -489,6 +514,8 @@ export default function AppointmentFormModal({
 
       await onSubmit({
         ...normalized,
+        // En edición el paciente nunca cambia: se conserva el original.
+        patientId: isEdit ? initialValues.patientId : normalized.patientId,
         details: normalized.details.trim(),
         payment:
           paymentCents > 0
@@ -515,7 +542,16 @@ export default function AppointmentFormModal({
      RENDER
   ========================================== */
 
-  
+  const title = readOnly
+    ? "Detalle de la cita"
+    : isEdit
+      ? "Editar cita"
+      : "Nueva cita";
+
+  const subtitle = readOnly
+    ? "Consulta la información de la cita."
+    : "Completa la información de la cita del paciente.";
+
   return (
     <dialog
       ref={dialogRef}
@@ -531,10 +567,8 @@ export default function AppointmentFormModal({
         {/* ENCABEZADO */}
         <header className="appt-modal__header">
           <div>
-            <h2 id="appt-modal-title">
-              {isEdit ? "Editar cita" : "Nueva cita"}
-            </h2>
-            <p>Completa la información de la cita del paciente.</p>
+            <h2 id="appt-modal-title">{title}</h2>
+            <p>{subtitle}</p>
           </div>
 
           <button
@@ -548,19 +582,30 @@ export default function AppointmentFormModal({
           </button>
         </header>
 
+        {/* AVISO DE SOLO LECTURA */}
+        {readOnly && (
+          <p className="appt-inline-warning" role="status">
+            {initialValues.status === CANCELLED_STATUS
+              ? "Esta cita está cancelada y no se puede modificar."
+              : "Esta cita ya fue completada y no se puede modificar."}
+          </p>
+        )}
+
         {/* CONTENIDO PRINCIPAL: DOS COLUMNAS */}
         <div className="appt-modal__grid">
-
           {/* COLUMNA IZQUIERDA */}
           <div className="appt-column">
-
             {/* PACIENTE */}
             <section className="appt-section">
               <div className="appt-section__heading">
                 <span className="appt-section__number">01</span>
                 <div>
                   <h3>Información del paciente</h3>
-                  <p>Selecciona al paciente y al responsable.</p>
+                  <p>
+                    {patientLocked
+                      ? "El paciente no se puede cambiar una vez creada la cita."
+                      : "Selecciona al paciente y al responsable."}
+                  </p>
                 </div>
               </div>
 
@@ -572,7 +617,7 @@ export default function AppointmentFormModal({
                   onBlur={(e) => {
                     if (
                       !e.currentTarget.contains(
-                        e.relatedTarget as Node | null
+                        e.relatedTarget as Node | null,
                       )
                     ) {
                       setShowResults(false);
@@ -585,56 +630,62 @@ export default function AppointmentFormModal({
                     type="text"
                     value={patientSearch}
                     onChange={(e) => {
+                      if (patientLocked) return;
                       setPatientSearch(e.target.value);
                       setShowResults(true);
                       patch({ patientId: null });
                     }}
                     onFocus={() =>
-                      patientSearch.trim() && setShowResults(true)
+                      !patientLocked &&
+                      patientSearch.trim() &&
+                      setShowResults(true)
                     }
                     placeholder="Buscar paciente..."
                     autoComplete="off"
-                    disabled={saving}
+                    disabled={saving || patientLocked}
+                    readOnly={patientLocked}
                   />
 
-                  {showResults && patientSearch.trim() !== "" && (
-                    <div className="patient-search-results">
-                      {patientsLoading && <LoadingScreen />}
+                  {!patientLocked &&
+                    showResults &&
+                    patientSearch.trim() !== "" && (
+                      <div className="patient-search-results">
+                        {patientsLoading && <LoadingScreen />}
 
-                      {!patientsLoading && patientsError && (
-                        <div className="patient-search-results__empty">
-                          No se pudieron cargar los pacientes.
-                        </div>
-                      )}
-
-                      {!patientsLoading &&
-                        !patientsError &&
-                        patients.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            disabled={saving}
-                            onClick={() => {
-                              patch({ patientId: Number(p.id) });
-                              setPatientSearch(
-                                `${p.first_name} ${p.last_name}`.trim()
-                              );
-                              setShowResults(false);
-                            }}
-                          >
-                            {p.first_name} {p.last_name}
-                          </button>
-                        ))}
-
-                      {!patientsLoading &&
-                        !patientsError &&
-                        patients.length === 0 && (
+                        {!patientsLoading && patientsError && (
                           <div className="patient-search-results__empty">
-                            No se encontraron pacientes.
+                            No se pudieron cargar los pacientes.
                           </div>
                         )}
-                    </div>
-                  )}
+
+                        {!patientsLoading &&
+                          !patientsError &&
+                          patients.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={saving}
+                              onClick={() => {
+                                patch({ patientId: Number(p.id) });
+                                setPatientSearch(
+                                  `${p.first_name} ${p.last_name}`.trim(),
+                                );
+                                setShowResults(false);
+                              }}
+                            >
+                              {p.first_name} {p.last_name}
+                            </button>
+                          ))}
+
+                        {!patientsLoading &&
+                          !patientsError &&
+                          patients.length === 0 && (
+                            <div className="patient-search-results__empty">
+                              No se encontraron pacientes.
+                            </div>
+                          )}
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -668,7 +719,7 @@ export default function AppointmentFormModal({
                         : null,
                     })
                   }
-                  disabled={saving}
+                  disabled={locked}
                 >
                   <option value="">Sin asignar</option>
                   {options.dentists.map((d) => (
@@ -697,7 +748,7 @@ export default function AppointmentFormModal({
                   value={values.date}
                   min={minDate}
                   onChange={handleDateChange}
-                  disabled={saving}
+                  disabled={locked}
                   required
                 />
               </label>
@@ -711,7 +762,7 @@ export default function AppointmentFormModal({
                     min={minStartTime}
                     value={values.startTime}
                     onChange={handleStartTimeChange}
-                    disabled={saving || noMoreSlotsToday}
+                    disabled={locked || noMoreSlotsToday}
                     required
                   />
                 </label>
@@ -724,7 +775,7 @@ export default function AppointmentFormModal({
                     min={minEndTime}
                     value={values.endTime}
                     onChange={setField("endTime")}
-                    disabled={saving || !values.startTime}
+                    disabled={locked || !values.startTime}
                     required
                   />
                 </label>
@@ -735,7 +786,7 @@ export default function AppointmentFormModal({
                 <select
                   value={values.status}
                   onChange={setField("status")}
-                  disabled={saving}
+                  disabled={locked}
                 >
                   {STATUS_OPTIONS.map((s) => (
                     <option key={s} value={s}>
@@ -750,7 +801,7 @@ export default function AppointmentFormModal({
                   Ya no hay horarios disponibles para hoy. Selecciona otro día.
                 </p>
               )}
-                        </section>
+            </section>
 
             {/* DETALLES ADICIONALES */}
             <section className="appt-section appt-details">
@@ -769,16 +820,14 @@ export default function AppointmentFormModal({
                   value={values.details}
                   onChange={setField("details")}
                   placeholder="Escribe observaciones sobre la cita..."
-                  disabled={saving}
+                  disabled={locked}
                 />
               </label>
             </section>
           </div>
 
-
           {/* COLUMNA DERECHA */}
           <div className="appt-column">
-
             {/* CONCEPTOS */}
             <section className="appt-section appt-section--items">
               <div className="appt-section__heading">
@@ -793,71 +842,76 @@ export default function AppointmentFormModal({
                 </span>
               </div>
 
-              {/* AGREGAR TRATAMIENTO */}
-              <label className="appt-field">
-                <span>Agregar tratamiento</span>
-                <select
-                  value=""
-                  onChange={(e) => handleAddTreatment(e.target.value)}
-                  disabled={saving || availableTreatments.length === 0}
-                >
-                  <option value="">
-                    {availableTreatments.length === 0
-                      ? "No hay tratamientos disponibles"
-                      : "Selecciona un tratamiento..."}
-                  </option>
-
-                  {availableTreatments.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} — {formatCurrency(Number(t.price))}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {/* AGREGAR CARGO */}
-              <div className="appt-extra-box">
-                <div className="appt-extra-box__heading">
-                  <strong>Cargo adicional</strong>
-                  <span>Materiales u otros conceptos.</span>
-                </div>
-
-                <div className="appt-extra-grid">
+              {/* AGREGAR TRATAMIENTO Y CARGO (ocultos en modo lectura) */}
+              {!readOnly && (
+                <>
                   <label className="appt-field">
-                    <span>Descripción</span>
-                    <input
-                      type="text"
-                      value={extraDescription}
-                      onChange={(e) => setExtraDescription(e.target.value)}
-                      placeholder="Ej. Material"
-                      maxLength={255}
-                      disabled={saving}
-                    />
+                    <span>Agregar tratamiento</span>
+                    <select
+                      value=""
+                      onChange={(e) => handleAddTreatment(e.target.value)}
+                      disabled={locked || availableTreatments.length === 0}
+                    >
+                      <option value="">
+                        {availableTreatments.length === 0
+                          ? "No hay tratamientos disponibles"
+                          : "Selecciona un tratamiento..."}
+                      </option>
+
+                      {availableTreatments.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} — {formatCurrency(Number(t.price))}
+                        </option>
+                      ))}
+                    </select>
                   </label>
 
-                  <label className="appt-field">
-                    <span>Precio</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={extraUnitPrice}
-                      onChange={(e) => setExtraUnitPrice(e.target.value)}
-                      placeholder="0.00"
-                      disabled={saving}
-                    />
-                  </label>
-                </div>
+                  <div className="appt-extra-box">
+                    <div className="appt-extra-box__heading">
+                      <strong>Cargo adicional</strong>
+                      <span>Materiales u otros conceptos.</span>
+                    </div>
 
-                <button
-                  type="button"
-                  className="appt-btn appt-btn--secondary appt-add-extra"
-                  onClick={handleAddExtra}
-                  disabled={saving}
-                >
-                  + Agregar cargo
-                </button>
-              </div>
+                    <div className="appt-extra-grid">
+                      <label className="appt-field">
+                        <span>Descripción</span>
+                        <input
+                          type="text"
+                          value={extraDescription}
+                          onChange={(e) =>
+                            setExtraDescription(e.target.value)
+                          }
+                          placeholder="Ej. Material"
+                          maxLength={255}
+                          disabled={locked}
+                        />
+                      </label>
+
+                      <label className="appt-field">
+                        <span>Precio</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={extraUnitPrice}
+                          onChange={(e) => setExtraUnitPrice(e.target.value)}
+                          placeholder="0.00"
+                          disabled={locked}
+                        />
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="appt-btn appt-btn--secondary appt-add-extra"
+                      onClick={handleAddExtra}
+                      disabled={locked}
+                    >
+                      + Agregar cargo
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* LISTA DE CONCEPTOS */}
               <div className="appt-items__list">
@@ -869,7 +923,11 @@ export default function AppointmentFormModal({
                   <div className="appt-items__empty">
                     <span>+</span>
                     <strong>Sin conceptos todavía</strong>
-                    <p>Agrega un tratamiento o cargo adicional.</p>
+                    <p>
+                      {readOnly
+                        ? "Esta cita no tiene conceptos registrados."
+                        : "Agrega un tratamiento o cargo adicional."}
+                    </p>
                   </div>
                 ) : (
                   <div className="appt-items__table">
@@ -911,22 +969,24 @@ export default function AppointmentFormModal({
                             {unitPrice === null
                               ? "—"
                               : formatCurrency(
-                                  unitPrice * (Number(item.quantity) || 1)
+                                  unitPrice * (Number(item.quantity) || 1),
                                 )}
                           </strong>
 
-                          <button
-                            type="button"
-                            className="appt-items__remove"
-                            onClick={() => handleRemoveItem(i)}
-                            disabled={saving}
-                            aria-label={`Eliminar ${description}`}
-                            title="Eliminar concepto"
-                          >
-                            ×
-                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="appt-items__remove"
+                              onClick={() => handleRemoveItem(i)}
+                              disabled={locked}
+                              aria-label={`Eliminar ${description}`}
+                              title="Eliminar concepto"
+                            >
+                              ×
+                            </button>
+                          )}
                         </div>
-                      )
+                      ),
                     )}
                   </div>
                 )}
@@ -960,7 +1020,11 @@ export default function AppointmentFormModal({
                   <span className="appt-section__number">05</span>
                   <div>
                     <h3>Registro de pago</h3>
-                    <p>Registra el importe recibido.</p>
+                    <p>
+                      {readOnly
+                        ? "Resumen del pago de la cita."
+                        : "Registra el importe recibido."}
+                    </p>
                   </div>
                 </div>
 
@@ -970,7 +1034,7 @@ export default function AppointmentFormModal({
                   value={values.payment}
                   onChange={patchPayment}
                   formatCurrency={formatCurrency}
-                  disabled={saving}
+                  disabled={locked}
                 />
               </section>
             )}
@@ -978,7 +1042,7 @@ export default function AppointmentFormModal({
         </div>
 
         {/* ERROR */}
-        {error && (
+        {error && !readOnly && (
           <div
             className="appt-modal__error"
             role="alert"
@@ -997,23 +1061,24 @@ export default function AppointmentFormModal({
             onClick={onClose}
             disabled={saving}
           >
-            Cancelar
+            {readOnly ? "Cerrar" : "Cancelar"}
           </button>
 
-          <button
-            type="submit"
-            className="appt-btn appt-btn--primary"
-            disabled={saving || noMoreSlotsToday}
-          >
-            {saving
-              ? "Guardando..."
-              : isEdit
-                ? "Guardar cambios"
-                : "Guardar cita"}
-          </button>
+          {!readOnly && (
+            <button
+              type="submit"
+              className="appt-btn appt-btn--primary"
+              disabled={saving || noMoreSlotsToday}
+            >
+              {saving
+                ? "Guardando..."
+                : isEdit
+                  ? "Guardar cambios"
+                  : "Guardar cita"}
+            </button>
+          )}
         </footer>
       </form>
     </dialog>
   );
-
 }
