@@ -6,12 +6,17 @@ interface Props {
 }
 
 const DashboardSalesCard = ({ sales }: Props) => {
+  const formattedSales = (sales ?? 0).toLocaleString("es-MX", {
+    style: "currency",
+    currency: "MXN",
+  });
+
   return (
     <article className="dashboard-sales-card">
       <div className="dashboard-sales-card__header">
         <div>
-          <span>Venta del día</span>
-          <p>Ingresos registrados hoy</p>
+          <span>Ingresos del periodo</span>
+          <p>Ingresos registrados según el filtro seleccionado</p>
         </div>
 
         <div className="dashboard-sales-card__icon">
@@ -19,16 +24,11 @@ const DashboardSalesCard = ({ sales }: Props) => {
         </div>
       </div>
 
-      <strong>
-        {sales.toLocaleString("es-MX", {
-          style: "currency",
-          currency: "MXN",
-        })}
-      </strong>
+      <strong>{formattedSales}</strong>
 
       <div className="dashboard-sales-card__footer">
         <TrendingUp size={15} />
-        <span>Ventas del día</span>
+        <span>Ingresos del periodo seleccionado</span>
       </div>
     </article>
   );

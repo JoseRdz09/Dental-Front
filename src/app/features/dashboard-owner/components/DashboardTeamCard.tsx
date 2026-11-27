@@ -43,56 +43,64 @@ const DashboardTeamCard = ({
 
       {clinicId === null ? (
         <div className="dashboard-team-card__clinics">
-          {clinics.map((clinic) => (
-            <div
-              className="dashboard-team-card__clinic"
-              key={clinic.id}
-            >
-              <div className="dashboard-team-card__clinic-icon">
-                <UserRound size={18} />
-              </div>
+          {clinics.map((clinic) => {
+            const memberCount = team.filter(
+              (member) => member.clinic_id === clinic.id
+            ).length;
 
-              <div>
-                <strong>{clinic.name}</strong>
-                <span>
-                  {clinic.stats.activeTeamMembers} integrantes activos
-                </span>
+            return (
+              <div
+                className="dashboard-team-card__clinic"
+                key={clinic.id}
+              >
+                <div className="dashboard-team-card__clinic-icon">
+                  <UserRound size={18} />
+                </div>
+
+                <div>
+                  <strong>{clinic.name}</strong>
+                  <span>
+                    {memberCount} integrantes registrados
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+
+          {clinics.length === 0 && (
+            <p className="dashboard-team-card__empty">
+              No hay clínicas registradas.
+            </p>
+          )}
         </div>
       ) : (
         <div className="dashboard-team-card__members">
-          {team.map((member) => (
-            <div
-              className="dashboard-team-card__member"
-              key={member.id}
-            >
-              <div className="dashboard-team-card__avatar">
-                {member.name
-                  .split(" ")
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase()}
-              </div>
-
-              <div className="dashboard-team-card__member-info">
-                <strong>{member.name}</strong>
-                <span>{ROLE_LABELS[member.role]}</span>
-              </div>
-
-              <span
-                className={`dashboard-team-card__status ${
-                  member.isActive ? "is-active" : "is-inactive"
-                }`}
+          {team
+            .filter((member) => member.clinic_id === clinicId)
+            .map((member) => (
+              <div
+                className="dashboard-team-card__member"
+                key={`${member.id}-${member.clinic_id}`}
               >
-                {member.isActive ? "Activo" : "Inactivo"}
-              </span>
-            </div>
-          ))}
+                <div className="dashboard-team-card__avatar">
+                  {member.name
+                    .split(" ")
+                    .slice(0, 2)
+                    .map((part) => part[0])
+                    .join("")
+                    .toUpperCase()}
+                </div>
 
-          {team.length === 0 && (
+                <div className="dashboard-team-card__member-info">
+                  <strong>{member.name}</strong>
+                  <span>{ROLE_LABELS[member.role]}</span>
+                </div>
+              </div>
+            ))}
+
+          {team.filter(
+            (member) => member.clinic_id === clinicId
+          ).length === 0 && (
             <p className="dashboard-team-card__empty">
               No hay integrantes registrados en esta clínica.
             </p>

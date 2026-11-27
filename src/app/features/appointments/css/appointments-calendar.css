@@ -177,23 +177,24 @@
   clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
 }
 
-/* COLORES BASADOS EN STATUS */
+/* ESTADÍSTICAS DE CITAS */
 
 .appt-stat--today {
-  --stat-color: #7b8e98;
+  --stat-color: #64748B;
 }
 
 .appt-stat--pending {
-  --stat-color: #d48806;
+  --stat-color: #F59E0B;
 }
 
 .appt-stat--confirmed {
-  --stat-color: #0f766e;
+  --stat-color: #16A34A;
 }
 
 .appt-stat--cancelled {
-  --stat-color: #dc2626;
+  --stat-color: #DC2626;
 }
+
 
 /* HOVER */
 

@@ -1,6 +1,5 @@
 
 import type {
-  AppointmentItemType,
   AppointmentStatus,
 } from "./appointment";
 

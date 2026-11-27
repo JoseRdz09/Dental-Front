@@ -32,6 +32,7 @@ const ownerMenuItems = [
   { label: "Clínicas", path: "/clinics", icon: Building2 },
   { label: "Equipo Clínico", path: "/team", icon: Users },
   { label: "Tratamientos", path: "/treatments", icon: Pill },
+  {label: "Nóminas",path: "./payroll", icon: CreditCard },
   { label: "Facturación", path: "/billing", icon: CreditCard },
   { label: "Configuración", path: "/owner-settings", icon: Settings },
 ];

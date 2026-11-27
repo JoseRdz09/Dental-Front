@@ -1,0 +1,378 @@
+
+/* ================================
+   DASHBOARD FILTERS
+================================ */
+
+.dashboard-filters {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.dashboard-filters__clinic,
+.dashboard-filters__date-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-filters__clinic {
+  width: min(100%, 300px);
+}
+
+.dashboard-filters__clinic label,
+.dashboard-filters__date-wrapper > label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.dashboard-filters__select {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-filters__select select {
+  appearance: none;
+  width: 100%;
+  height: 46px;
+  padding: 0 42px 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  outline: none;
+  background: #fff;
+  color: #172554;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.dashboard-filters__select select:focus {
+  border-color: #4776e6;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .09);
+}
+
+.dashboard-filters__select > svg {
+  position: absolute;
+  right: 14px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+/* ================================
+   DATE TRIGGER
+================================ */
+
+.dashboard-filters__date-wrapper {
+  min-width: 230px;
+}
+
+.dashboard-filters__date-container {
+  position: relative;
+}
+
+.dashboard-date-trigger {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 46px;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #fff;
+  color: #172554;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.dashboard-date-trigger:hover,
+.dashboard-date-trigger.is-open {
+  border-color: #4776e6;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .07);
+}
+
+.dashboard-date-trigger__icon {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.dashboard-date-trigger__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dashboard-date-trigger__content strong {
+  color: #172554;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-date-trigger__content small {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.dashboard-date-trigger__chevron {
+  color: #64748b;
+  transition: transform .2s;
+}
+
+.dashboard-date-trigger__chevron.rotated {
+  transform: rotate(180deg);
+}
+
+/* ================================
+   CALENDAR
+================================ */
+
+.dashboard-calendar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.dashboard-calendar {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 41;
+  width: 320px;
+  padding: 19px;
+  border: 1px solid #e8edf5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 16px 45px rgba(15, 23, 42, .13),
+    0 3px 10px rgba(15, 23, 42, .04);
+  animation: dashboard-calendar-in .18s ease-out;
+}
+
+@keyframes dashboard-calendar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-calendar__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 17px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dashboard-calendar__header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-calendar__header span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.dashboard-calendar__header h3 {
+  margin: 0;
+  color: #172554;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.dashboard-calendar__today {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.dashboard-calendar__today:hover {
+  background: #dbeafe;
+}
+
+/* Navigation */
+
+.dashboard-calendar__navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 17px 0;
+}
+
+.dashboard-calendar__navigation > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.dashboard-calendar__navigation strong {
+  color: #172554;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.dashboard-calendar__navigation span {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.dashboard-calendar__arrows {
+  display: flex;
+  gap: 6px;
+}
+
+.dashboard-calendar__arrows button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.dashboard-calendar__arrows button:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+/* Calendar grid */
+
+.dashboard-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.dashboard-calendar__weekday {
+  display: grid;
+  place-items: center;
+  height: 30px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.dashboard-calendar__empty {
+  height: 36px;
+}
+
+.dashboard-calendar__day {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.dashboard-calendar__day:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.dashboard-calendar__day.today {
+  border-color: #bfdbfe;
+  color: #2563eb;
+  font-weight: 750;
+}
+
+.dashboard-calendar__day.selected {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 750;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, .2);
+}
+
+/* Footer */
+
+.dashboard-calendar__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 16px;
+  padding-top: 13px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.dashboard-calendar__footer span {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.dashboard-calendar__footer strong {
+  color: #172554;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ================================
+   RESPONSIVE
+================================ */
+
+@media (max-width: 600px) {
+  .dashboard-filters {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .dashboard-filters__clinic,
+  .dashboard-filters__date-wrapper {
+    width: 100%;
+  }
+
+  .dashboard-calendar {
+    right: 0;
+    width: min(320px, calc(100vw - 40px));
+  }
+}

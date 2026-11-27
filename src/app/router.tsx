@@ -11,9 +11,10 @@ import PatientsPage from "../app/features/patients/page/PatientsPage.tsx";
 import SettingsPage from "../app/features/settings/pages/SettingsPage.tsx";
 import ClinicsPage from "./features/clinics/pages/ClinicsPage.tsx";
 import Clinicalteam from "./features/clinical-team/pages/ClinicalteamPage.tsx";
-import Billing from "./features/Billing/pages/Billing.tsx";
+import BillingPage from "./features/Billing/pages/BillingPage.tsx";
 import TreatmentsPage from "./features/treatments/pages/TreatmentsPage.tsx";
 import PaymentsPage from "./features/payment/pages/PaymentsPage.tsx";
+import PayrollPage from "./features/payroll/pages/PayrollPage.tsx";
 
 
 
@@ -33,7 +34,8 @@ export default function AppRouter() {
             />
             <Route path="/clinics" element={<ClinicsPage />} />
             <Route path="/team" element={<Clinicalteam />} />
-            <Route path="/billing" element={<Billing />} />
+            <Route path="/payroll" element={<PayrollPage />} />
+            <Route path="/billing" element={<BillingPage />} />
             <Route path="/treatments" element={<TreatmentsPage />} />
             <Route path="/owner-settings" element={<SettingsPage />} />
           </Route>

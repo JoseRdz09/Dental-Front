@@ -4,11 +4,11 @@ import { TrendingUp } from "lucide-react";
 
 interface Props {
   title: string;
-  value: string;
+  value: string | number;
   description: string;
   icon: LucideIcon;
   variant: "blue" | "green" | "orange" | "purple";
-  trend?: string;
+  trend?: string | null;
 }
 
 const DashboardStatCard = ({

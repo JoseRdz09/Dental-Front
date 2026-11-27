@@ -1,6 +1,3 @@
-
-import { useMemo, useState } from "react";
-
 import DashboardHeader from "../components/DashboardHeader";
 import DashboardFilters from "../components/DashboardFilters";
 import DashboardStats from "../components/DashboardStats";
@@ -8,79 +5,23 @@ import DashboardSalesCard from "../components/DashboardSalesCard";
 import DashboardPerformance from "../components/DashboardPerformance";
 import DashboardTeamCard from "../components/DashboardTeamCard";
 
-import {
-  DASHBOARD_CLINICS,
-  DASHBOARD_TEAM,
-} from "../data/dashboardMockData";
-
-import type {
-  DashboardPeriod,
-  DashboardStatsData,
-} from "../types/dashboard";
+import { useDashboard } from "../hooks/useDashboard";
 
 import "../css/DashboardPage.css";
+import LoadingScreen from "../../../../assets/shared/components/LoadingScreen";
 
 const DashboardPage = () => {
-  const [clinicId, setClinicId] = useState<number | null>(null);
-  const [period, setPeriod] = useState<DashboardPeriod>("month");
-
-  const selectedClinic = useMemo(
-    () => DASHBOARD_CLINICS.find((clinic) => clinic.id === clinicId),
-    [clinicId]
-  );
-
-  const stats = useMemo<DashboardStatsData>(() => {
-    if (selectedClinic) {
-      return selectedClinic.stats;
-    }
-
-    const totals = DASHBOARD_CLINICS.reduce(
-      (acc, clinic) => ({
-        monthlyIncome:
-          acc.monthlyIncome + clinic.stats.monthlyIncome,
-        confirmedAppointments:
-          acc.confirmedAppointments +
-          clinic.stats.confirmedAppointments,
-        pendingAppointments:
-          acc.pendingAppointments +
-          clinic.stats.pendingAppointments,
-        dailySales:
-          acc.dailySales + clinic.stats.dailySales,
-        completedAppointments:
-          acc.completedAppointments +
-          clinic.stats.completedAppointments,
-        activeTeamMembers:
-          acc.activeTeamMembers +
-          clinic.stats.activeTeamMembers,
-      }),
-      {
-        monthlyIncome: 0,
-        confirmedAppointments: 0,
-        pendingAppointments: 0,
-        dailySales: 0,
-        completedAppointments: 0,
-        activeTeamMembers: 0,
-      }
-    );
-
-    const performance =
-      totals.confirmedAppointments > 0
-        ? Math.round(
-            (totals.completedAppointments /
-              totals.confirmedAppointments) *
-              100
-          )
-        : 0;
-
-    return {
-      ...totals,
-      performance,
-    };
-  }, [selectedClinic]);
-
-  const team = clinicId !== null
-    ? DASHBOARD_TEAM[clinicId] ?? []
-    : [];
+  const {
+    clinics,
+    clinicId,
+    setClinicId,
+    date,
+    setDate,
+    stats,
+    team,
+    loading,
+    error,
+  } = useDashboard();
 
   return (
     <main className="dashboard-page">
@@ -88,28 +29,39 @@ const DashboardPage = () => {
 
       <div className="dashboard-page__body">
         <DashboardFilters
-          clinics={DASHBOARD_CLINICS}
+          clinics={clinics}
           clinicId={clinicId}
-          period={period}
+          date={date}
           onClinicChange={setClinicId}
-          onPeriodChange={setPeriod}
+          onDateChange={setDate}
         />
 
-        <DashboardStats stats={stats} />
+        {error && <p className="dashboard-page__error">{error}</p>}
 
-        <section className="dashboard-page__bottom">
-          <DashboardPerformance stats={stats} />
+        {loading && !stats && (
+          // <p className="dashboard-page__loading">Cargando…</p>
+          < LoadingScreen />
+        )}
 
-          <div className="dashboard-page__sidebar">
-            <DashboardSalesCard sales={stats.dailySales} />
+        {stats && (
+          <>
+            <DashboardStats stats={stats} date={date} />
 
-            <DashboardTeamCard
-              clinicId={clinicId}
-              clinics={DASHBOARD_CLINICS}
-              team={team}
-            />
-          </div>
-        </section>
+            <section className="dashboard-page__bottom">
+              <DashboardPerformance stats={stats} />
+
+              <div className="dashboard-page__sidebar">
+                <DashboardSalesCard sales={stats.todaySales} />
+
+                <DashboardTeamCard
+                  clinicId={clinicId}
+                  clinics={clinics}
+                  team={team} // pendiente: ver nota abajo
+                />
+              </div>
+            </section>
+          </>
+        )}
       </div>
     </main>
   );

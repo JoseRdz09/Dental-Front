@@ -13,10 +13,10 @@ export interface StatusStyle {
  * valida la forma sin ensanchar los tipos.
  */
 export const STATUS = {
-  pendiente: { label: "Pendiente", bg: "#fdf0cf", fg: "#6b4204", accent: "#d48806" },
-  confirmada: { label: "Confirmada", bg: "#d9f2ee", fg: "#0b4f49", accent: "#0f766e" },
-  completada: { label: "Completada", bg: "#e8edf0", fg: "#43545c", accent: "#7b8e98" },
-  cancelada: { label: "Cancelada", bg: "#fde4e4", fg: "#8a1c1c", accent: "#dc2626" },
+  pendiente: { label: "Pendiente", bg: "#FEF3C7", fg: "#92400E", accent: "#F59E0B" },
+  confirmada: { label: "Confirmada", bg: "#DCFCE7", fg: "#166534", accent: "#16A34A" },
+  completada: { label: "Completada", bg: "#DBEAFE", fg: "#1E40AF", accent: "#2563EB" },
+  cancelada: { label: "Cancelada", bg: "#FEE2E2", fg: "#991B1B", accent: "#DC2626" },
 } as const satisfies Record<string, StatusStyle>;
 
 export type StatusKey = keyof typeof STATUS;
